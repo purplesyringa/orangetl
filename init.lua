@@ -167,14 +167,23 @@ function parsers.shallow(stream, chopper, until_what)
                 return
             end
             stream.cur.is_function_expr = table.remove(nesting_is_function_expr)
+        elseif (
+            -- Recognize `field: type =` in table constructor, ignoring `:` in method calls.
+            stream.cur.value == ":" and not (
+                stream.next.type == "alnum" and stream.next.value ~= "function"
+                and (stream.next2.type == "string" or anyOf(stream.next2.value, "( {"))
+            )
+        ) then
+            local first = stream.cur.first
+            stream.nextToken()
+            parsers.type(stream)
+            chopper.cut(first, stream.prev.last)
         else
             stream.nextToken()
         end
     end
 
     assert(not next(nesting_is_function_expr), "unbalanced end")
-
-    -- TODO: `field: type =` in table constructors
 end
 
 -- Parse a statement starting with `local` or `global`, before returning control to the shallow
