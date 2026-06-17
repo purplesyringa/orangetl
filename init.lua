@@ -189,9 +189,33 @@ function parsers.localGlobal(stream, chopper)
         chopper.cut(stream.cur.first, stream.cur.last, "function")
         return
     else
-        -- TODO:
-        -- Variable definition. We have to parse this until `:` or `=` to resolve attributes: both
-        -- to remove `<total>` and to annotate the closing angle bracket for the shallow parser.
+        -- Variable definition. We have to parse this until the type because function types are
+        -- syntactically indistinguishable from the start of a closure, but don't require an `end`,
+        -- and trying to use the shallow parser on this breaks `end` detection.
+        repeat
+            assert(stream.cur.type == "alnum", "invalid syntax in definition")
+            stream.nextToken()
+            -- Handle attributes: we need to remove `<total>` and annotate the closing angle bracket
+            -- for the shallow parser.
+            if stream.tryConsume("<") then
+                local first = stream.prev.first
+                assert(stream.cur.type == "alnum", "expected identifier in attribute")
+                local name = stream.nextToken()
+                assert(stream.tryConsume(">"), "invalid attribute syntax")
+                stream.prev.is_attribute = true
+                if name == "total" then
+                    chopper.cut(first, stream.prev.last)
+                end
+            end
+        until not stream.tryConsume(",")
+
+        if stream.tryConsume(":") then
+            local first = stream.prev.first
+            repeat
+                parsers.type(stream)
+            until not stream.tryConsume(",")
+            chopper.cut(first, stream.prev.last)
+        end
     end
 end
 
