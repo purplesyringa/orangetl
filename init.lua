@@ -177,17 +177,7 @@ function parsers.localGlobal(stream, chopper)
         -- Parse `local record _`, etc. as a type definition if `_` is alnum. This isn't always
         -- correct per the grammar, but it seems to be the same heuristic that Teal uses:
         -- https://github.com/teal-language/tl/issues/1132
-
-        -- Special case: `global type _` not followed by `=` has no runtime effect.
-        -- TODO: handle generics
-        if stream.cur.value == "type" and stream.next2.value ~= "=" then
-            chopper.cut(stream.cur.first, stream.next.last)
-            stream.nextToken()
-            stream.nextToken()
-            return
-        end
-
-        parsers.typeDefinition(stream, chopper)
+        parsers.typeDefinition(stream, chopper, true)
     elseif stream.cur.value == "function" then
         -- Let the shallow parser deal with this.
         return
@@ -213,21 +203,28 @@ end
 -- - To allow reexports of nested types to evaluate without triggering `nil` dereference, e.g. in
 --   `return Type.Nested`.
 -- - To populate the `__is` method for the `is` operator.
-function parsers.typeDefinition(stream, chopper)
+function parsers.typeDefinition(stream, chopper, allow_empty)
+    local first = stream.cur.first
     local def_type = stream.cur.value
-
-    -- Replace `record _` with `_ =`
-    chopper.cut(stream.cur.first, stream.next.first - 1)
-    chopper.insert(stream.next.last + 1, " =")
+    local name_token = stream.next
     stream.nextToken()
     stream.nextToken()
 
     parsers.maybeTypeArgs(stream)
 
+    if def_type == "type" and not stream.tryConsume("=") then
+        assert(allow_empty, "expected = <newtype> after 'type _'")
+        chopper.cut(first, stream.prev.last)
+        return
+    end
+
+    -- Replace `record _` with `_ =`
+    chopper.cut(first, name_token.first - 1)
+    chopper.insert(name_token.last + 1, " =")
+
     if def_type == "enum" then
         parsers.enumBody(stream, chopper)
     elseif def_type == "type" then
-        assert(stream.tryConsume("="), "expected = <newtype> after 'type _' " .. stream.code:sub(stream.cur.first, stream.cur.first + 100))
         -- newtype
         if anyOf(stream.cur.value, "record interface") then
             chopper.cut(stream.cur.first, stream.next.first - 1)
