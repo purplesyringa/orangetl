@@ -147,8 +147,9 @@ function parsers.shallow(stream, chopper, until_what)
         elseif stream.cur.value == "do" or stream.cur.value == "if" then
             table.insert(nesting_is_function_expr, false)
         elseif stream.cur.value == "function" then
-            table.insert(nesting_is_function_expr, stream.next.type == "punct")
-            -- TODO: remove types from `function [name] <...> (...)`
+            local is_expr = parsers.funcDef(stream, chopper)
+            table.insert(nesting_is_function_expr, is_expr)
+            goto next
         elseif stream.cur.value == "end" then
             assert(next(nesting_is_function_expr), "unbalanced end")
             stream.cur.is_function_expr = table.remove(nesting_is_function_expr)
@@ -159,7 +160,7 @@ function parsers.shallow(stream, chopper, until_what)
         ::next::
     end
 
-    print("?", table.unpack(nesting_is_function_expr))
+    assert(not next(nesting_is_function_expr), "unbalanced end")
 
     -- TODO: `field: type =` in table constructors
 end
@@ -447,6 +448,50 @@ function parsers.baseType(stream)
     else
         error("invalid basetype")
     end
+end
+
+-- Parse `function [name] ...`, stopping just before the body. Returns whether the function had
+-- a name, assumes the first token is `function`.
+function parsers.funcDef(stream, chopper)
+    stream.nextToken()
+
+    local has_name = stream.cur.type == "alnum"
+    if has_name then
+        -- funcname
+        stream.nextToken()
+        while stream.tryConsume(".") do
+            assert(stream.cur.type == "alnum", "expected identifier after .")
+            stream.nextToken()
+        end
+        if stream.tryConsume(":") then
+            assert(stream.cur.type == "alnum", "expected identifier after :")
+            stream.nextToken()
+        end
+    end
+
+    parsers.maybeTypeArgs(stream, chopper)
+
+    assert(stream.tryConsume("("), "expected ( in function definition")
+    while not stream.tryConsume(")") do
+        if stream.tryConsume(":") then
+            local first = stream.prev.first
+            parsers.type(stream)
+            chopper.cut(first, stream.prev.last)
+        elseif stream.tryConsume("?") then
+            chopper.cut(stream.prev.first, stream.prev.last)
+        else
+            -- Keep names and commas as is without wasting time parsing the exact grammar.
+            stream.nextToken()
+        end
+    end
+
+    if stream.tryConsume(":") then
+        local first = stream.prev.first
+        parsers.retList(stream)
+        chopper.cut(first, stream.prev.last)
+    end
+
+    return has_name
 end
 
 function parsers.retList(stream)

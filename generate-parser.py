@@ -297,21 +297,9 @@ class ref(Parser):
 class grammar:
     # Type usage.
     type = custom("parseType()")
-    retlist = custom("parseRetlist()")
     exp = custom("parseExp()")
 
-    # parlist = "(" + (":" + type | "?" | custom("skipToken()")).terminated(")")
-    funcbody = maybe(parenthesized("<>")) + parenthesized("()") + maybe(":", retlist) + custom("parseUntilEnd()")
-
     field = maybe("[" + ref("exp") + "]" + "=" | alnum + maybe(":", type) + "=") + ref("exp")
-
-    local_global_stat = (
-        "function" + alnum + ref("funcbody")
-        | alnum.separated(",") + maybe(":", type.separated(",")) + maybe("=", ref("exp").separated(","))
-    )
-    stat = (
-        "function" + alnum + repeat(".", alnum) + maybe(":", alnum) + ref("funcbody")
-    )
 
 def generate_code():
     # referenced_parsers.add("block")
