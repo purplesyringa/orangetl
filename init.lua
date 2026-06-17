@@ -10,10 +10,12 @@ local function anyOf(s, pattern)
     return false
 end
 
+local parsers = {}
+
 -- An approximate, non-recursive parser that greps for structures we're interested in without
 -- constructing a syntax tree. It acts as a sieve, passing control to a better parser as it
 -- recognizes an important construct.
-local function shallowParser(stream, until_end)
+function parsers.shallow(stream, until_end)
     local n = 0
 
     -- Tracks nested blocks/expressions that are finished by the `end` keyword. Used for `as`/`is`
@@ -22,7 +24,8 @@ local function shallowParser(stream, until_end)
 
     while stream.cur.type ~= "eof" do
         if stream.cur.value == "local" then
-            stream.cur.is_local_global = true
+            parsers.localGlobal(stream)
+            goto next
         elseif stream.cur.value == "global" then
             -- Since `global` is not a keyword, some occurrences of `global` may be identifiers. In
             -- fact, since `global = 1` is parsed as an assignment, it's not even guaranteed to be
@@ -33,11 +36,11 @@ local function shallowParser(stream, until_end)
             elseif (
                 -- Does this position not accept a statement?
                 -- An expression (or block end) is expected.
-                anyOf(stream.prev.value, "if elseif in while until = [ ( { return , + - * / ^ % & ~ | < > # and or not")
-                -- An identifier is expected.
+                anyOf(stream.prev.value, "if elseif in while until = [ ( { return , + - * / ^ % & ~ | < # and or not")
+                or stream.prev.value == ">" and not stream.prev.is_attribute
+                -- An identifier is expected. This should also include `local _` and
+                -- `local record _`, but we use a separate parser for that.
                 or anyOf(stream.prev.value, "goto function for .")
-                or stream.prev.is_local_global
-                or stream.prev2.is_local_global and anyOf(stream.prev.value, "record interface enum type")
                 -- Method syntax, not a label.
                 or stream.prev.value == ":" and stream.prev2.value ~= ":"
                 -- Followed by a binary operator.
@@ -64,7 +67,10 @@ local function shallowParser(stream, until_end)
                 -- - All remaining tokens form invalid syntax.
                 is_keyword = true
             end
-            stream.cur.is_local_global = is_keyword
+            if is_keyword then
+                parsers.localGlobal(stream)
+                goto next
+            end
         elseif stream.cur.value == "as" or stream.cur.value == "is" then
             -- `as|is (type)` may either be an operator use or a function call depending on context.
             local is_keyword
@@ -87,15 +93,8 @@ local function shallowParser(stream, until_end)
             else
                 -- alnum
                 if (
-                    -- An identifier is expected.
-                    anyOf(stream.prev.value, "goto function for")
-                    or stream.prev.is_local_global
-                    or stream.prev2.is_local_global and anyOf(stream.prev.value, "record interface enum type")
-                ) then
-                    is_keyword = false
-                elseif (
-                    -- A statement or expression is expected.
-                    anyOf(stream.prev.value, "break do while repeat until if then elseif else in return")
+                    -- An identifier, statement, or expression is expected.
+                    anyOf(stream.prev.value, "goto function for break do while repeat until if then elseif else in return")
                 ) then
                     is_keyword = false
                 elseif stream.prev.value == "end" then
@@ -113,10 +112,10 @@ local function shallowParser(stream, until_end)
             -- recordbody
             -- enumbody
         elseif stream.cur.value == "end" then
-            if not next(nesting_is_function_expr) then
-                assert(until_end, "unbalanced end")
-                return
-            end
+            -- if not next(nesting_is_function_expr) then
+            --     assert(until_end, "unbalanced end")
+            --     return
+            -- end
             stream.cur.is_function_expr = table.remove(nesting_is_function_expr)
         end
 
@@ -125,6 +124,8 @@ local function shallowParser(stream, until_end)
         end
 
         stream.nextToken()
+
+        ::next::
     end
 
     print(table.unpack(nesting_is_function_expr))
@@ -167,6 +168,40 @@ local function shallowParser(stream, until_end)
     -- end
 
     -- print(n)
+end
+
+-- Parse a statement starting with `local` or `global`, before returning control to the shallow
+-- parser.
+function parsers.localGlobal(stream)
+    local first = stream.cur.first
+    local is_global = stream.cur.value == "global"
+    stream.nextToken()
+
+    if stream.next.type == "alnum" and anyOf(stream.cur.value, "record interface enum type") then
+        -- Parse `local record _`, etc. as a type definition if `_` is alnum. This isn't always
+        -- correct per grammar, but it seems to be the same heuristic that Teal uses:
+        -- https://github.com/teal-language/tl/issues/1132
+        local def_type = stream.cur.value
+        local name = stream.next.value
+        stream.nextToken()
+        stream.nextToken()
+
+        if def_type == "enum" then
+            -- parsers.enumBody(stream)
+        elseif def_type == "type" then
+            if stream.cur.value == "=" then
+                stream.nextToken()
+                -- parsers.newType(stream)
+            end
+        else
+            -- parsers.recordBody(stream)
+        end
+
+        -- stream.cut(first, stream.prev.last)
+    else
+        -- Variable definition. We have to parse this until `:` or `=` to resolve attributes: both
+        -- to remove `<total>` and to annotate the closing angle bracket for the shallow parser.
+    end
 end
 
 -- local function transpile(code)
@@ -254,4 +289,4 @@ local f = io.open(arg[1], "rb")
 local content = f:read("*a")
 f:close()
 
-shallowParser(tokenstream.lexerToTokenStream(lex.lex(content)))
+parsers.shallow(tokenstream.lexerToTokenStream(lex.lex(content)))

@@ -267,13 +267,15 @@ class either(Parser):
     def __or__(self, rhs: ParserLike) -> Parser:
         return either(*self.arms, rhs)
 
-class wildcard(Parser):
+class custom(Parser):
+    def __init__(self, code: str):
+        self.code = code
     def lookahead_token_like(self) -> Optional[TokenLike]:
         return None
     def lookahead_condition(self) -> str:
-        raise ValueError("wildcard cannot be subject of a lookahead")
+        raise ValueError("custom parser cannot be subject of a lookahead")
     def parse(self) -> str:
-        return "skipToken()\n"
+        return self.code + "\n"
 
 referenced_parsers = set()
 
@@ -305,8 +307,8 @@ class grammar:
     type = parenthesized("()") | basetype.separated("|")
 
     # Function definitions.
-    parlist = "(" + (":" + ref("type") | "?" | wildcard()).terminated(")")
-    funcbody = maybe(typeargs) + parlist + maybe(":", ref("retlist")) + ref("stat").terminated("end")
+    parlist = "(" + (":" + ref("type") | "?" | custom("skipToken()")).terminated(")")
+    funcbody = maybe(typeargs) + parlist + maybe(":", ref("retlist")) + custom("parseUntilEnd()")
     functiondef = "function" + ref("funcbody")
 
     # Expressions.
@@ -342,36 +344,12 @@ class grammar:
     recordbody = maybe(typeargs) + maybe("is", interfacelist) + maybe("where", ref("exp")) + recordentry.terminated("end")
 
     # Statements.
-    explist = ref("exp").separated(",")
-    namelist = alnum.separated(",")
-    funcname = alnum + repeat(".", alnum) + maybe(":", alnum)
-    block_end = eof | peek("end") | peek("until") | peek("elseif") | peek("else")
-    block = ref("stat").terminated(block_end)
     local_global_stat = (
         "function" + alnum + ref("funcbody")
-        | "record" + alnum + ref("recordbody")
-        | "interface" + alnum + ref("recordbody")
-        | "enum" + alnum + enumbody
-        | "type" + alnum + maybe("=", ref("newtype"))
-        | namelist + maybe(":", typelist) + maybe("=", explist)
+        | alnum.separated(",") + maybe(":", typelist) + maybe("=", ref("exp").separated(","))
     )
     stat = (
-        ";"
-        | "::" + alnum + "::"
-        | "break"
-        | "goto" + alnum
-        | "return" + (block_end | ";" | explist)
-        | "do" + ref("block") + "end"
-        | "while" + ref("exp")
-        | "repeat" + ref("block") + "until" + ref("exp")
-        | "if" + ref("exp") + "then" + ref("block") + "end"
-        | "elseif" + ref("exp") + "then" + ref("block")
-        | "else" + ref("block")
-        | "for" + namelist + either("=", "in") + explist
-        | "function" + funcname + ref("funcbody")
-        | "local" + ref("local_global_stat")
-        | "global" + ref("local_global_stat")
-        | ref("prefixexp").separated(",") + maybe("=", explist)
+        "function" + alnum + repeat(".", alnum) + maybe(":", alnum) + ref("funcbody")
     )
 
 def generate_code():
