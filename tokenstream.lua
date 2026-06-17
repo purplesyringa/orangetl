@@ -21,7 +21,7 @@ local function makeTokenStream(code)
         if type == "short_string" or type == "long_string" then
             type = "string"
         end
-        local token = { value = "", type = "eof" }
+        local token = { value = "", type = "eof", first = #code + 1, last = #code + 1 }
         if value then
             token = {
                 value = value,
@@ -37,6 +37,15 @@ local function makeTokenStream(code)
         stream.cur = stream.next
         stream.next = stream.next2
         stream.next2 = token
+    end
+
+    function stream.tryConsume(value)
+        if stream.cur.value == value then
+            stream.nextToken()
+            return true
+        else
+            return false
+        end
     end
 
     -- Populate up to `cur`.

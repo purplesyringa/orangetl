@@ -96,8 +96,6 @@ class parenthesized(Parser):
         return f'peekToken() == "{self.l}"'
     def parse(self) -> str:
         return f'parseParenthesized("{self.l}", "{self.r}")\n'
-    def try_parse(self) -> tuple[str, str]:
-        return f"{self.lookahead_condition()} and {self.parse().rstrip()}", ""
 
 class sequence(Parser):
     def __init__(self, *patterns: ParserLike):
@@ -299,28 +297,14 @@ class ref(Parser):
 class grammar:
     # Type usage.
     type = custom("parseType()")
-    typeargs = parenthesized("<>")
     retlist = custom("parseRetlist()")
+    exp = custom("parseExp()")
 
-    # Function definitions.
-    parlist = "(" + (":" + type | "?" | custom("skipToken()")).terminated(")")
-    funcbody = maybe(typeargs) + parlist + maybe(":", retlist) + custom("parseUntilEnd()")
-    functiondef = "function" + ref("funcbody")
+    # parlist = "(" + (":" + type | "?" | custom("skipToken()")).terminated(")")
+    funcbody = maybe(parenthesized("<>")) + parenthesized("()") + maybe(":", retlist) + custom("parseUntilEnd()")
 
-    # Expressions.
     field = maybe("[" + ref("exp") + "]" + "=" | alnum + maybe(":", type) + "=") + ref("exp")
-    tableconstructor = "{" + (field + maybe(either(",", ";"))).terminated("}")
-    args = "(" + (ref("exp") + maybe(",")).terminated(")") | string | ref("tableconstructor", tableconstructor)
-    expsuf = "[" + ref("exp") + "]" | "." + alnum | ":" + alnum + ref("args", args) | ref("args", args)
-    prefixexp = ("(" + ref("exp") + ")" | alnum) + repeat(expsuf)
-    exp_nonrec = string | "..." | functiondef | ref("tableconstructor", tableconstructor) | ref("prefixexp")
-    binop = either("+", "-", "*", "//", "/", "^", "%", "&", "|", ">>", "<<", "..", "<=", "<", ">=", ">", "==", "~=", "~", "and", "or")
-    unop = either("-", "not", "#", "~")
-    as_op = "as" + (parenthesized("()") | type)
-    is_op = "is" + type
-    exp = (repeat(unop) + exp_nonrec + repeat(as_op | is_op)).separated(binop)
 
-    # Statements.
     local_global_stat = (
         "function" + alnum + ref("funcbody")
         | alnum.separated(",") + maybe(":", type.separated(",")) + maybe("=", ref("exp").separated(","))
