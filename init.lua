@@ -381,6 +381,7 @@ function parsers.recordBody(stream, chopper)
             end
             assert(stream.tryConsume(":"), "expected : after recordkey in recordbody")
             parsers.type(stream)
+            assert(not stream.tryConsume("="), "assignments in recordbody are not supported")
         end
         if do_cut and chopper then
             chopper.cut(first, stream.prev.last)
