@@ -1,4 +1,4 @@
-local chopper = require "chopper"
+local chopping = require "chopping"
 local tokenstream = require "tokenstream"
 
 local function anyOf(s, pattern)
@@ -249,15 +249,20 @@ function parsers.typeDefinition(stream, chopper, allow_empty)
 
     parsers.maybeTypeArgs(stream)
 
-    if def_type == "type" and not stream.tryConsume("=") then
-        assert(allow_empty, "expected = <newtype> after 'type _'")
-        chopper.cut(first, stream.prev.last)
-        return
+    if def_type == "type" then
+        if stream.tryConsume("=") then
+            -- Remove `type` prefix.
+            chopper.cut(first, name_token.first - 1)
+        else
+            assert(allow_empty, "expected = <newtype> after 'type _'")
+            chopper.cut(first, stream.prev.last)
+            return
+        end
+    else
+        -- Replace `record _` with `_ =` before parsing the rest of the definition.
+        chopper.cut(first, name_token.first - 1)
+        chopper.insert(name_token.last + 1, " =")
     end
-
-    -- Replace `record _` with `_ =`
-    chopper.cut(first, name_token.first - 1)
-    chopper.insert(name_token.last + 1, " =")
 
     if def_type == "enum" then
         parsers.enumBody(stream, chopper)
@@ -642,4 +647,6 @@ local f = io.open(arg[1], "rb")
 local content = f:read("*a")
 f:close()
 
-parsers.shallow(tokenstream.makeTokenStream(content), chopper.makeChopper(content), "eof")
+local chopper = chopping.makeChopper(content)
+parsers.shallow(tokenstream.makeTokenStream(content), chopper, "eof")
+print(chopper.finish())
