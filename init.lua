@@ -643,16 +643,6 @@ function parsers.maybeTypeArgs(stream, chopper)
     end
 end
 
---         elseif token == "function" then
---             -- `function` is a keyword, so it being present anywhere indicates a function signature.
---             parse.function_()
-
--- local vfs = require "vfs"
--- local content = vfs.read("acc.lua")
--- local start = os.clock()
--- parse(content)
--- print(os.clock() - start)
-
 local f = io.open(arg[1], "rb")
 local content = f:read("*a")
 f:close()
