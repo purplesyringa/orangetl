@@ -54,7 +54,6 @@ function parsers.shallow(stream, chopper, until_what)
 
         if stream.cur.value == "local" then
             parsers.localGlobal(stream, chopper)
-            goto next
         elseif stream.cur.value == "global" then
             -- Since `global` is not a keyword, some occurrences of `global` may be identifiers. In
             -- fact, since `global = 1` is parsed as an assignment, it's not even guaranteed to be
@@ -98,7 +97,8 @@ function parsers.shallow(stream, chopper, until_what)
             end
             if is_keyword then
                 parsers.localGlobal(stream, chopper)
-                goto next
+            else
+                stream.nextToken()
             end
         elseif stream.cur.value == "as" or stream.cur.value == "is" then
             -- `as|is (type)` may either be an operator use or a function call depending on context.
@@ -135,29 +135,24 @@ function parsers.shallow(stream, chopper, until_what)
                     is_keyword = true
                 end
             end
-            if is_keyword then
-                if stream.cur.value == "as" then
-                    parsers.as(stream, chopper)
-                    goto next
-                else
-                    parsers.is(stream, chopper)
-                    goto next
-                end
+            if not is_keyword then
+                stream.nextToken()
+            elseif stream.cur.value == "as" then
+                parsers.as(stream, chopper)
+            else
+                parsers.is(stream, chopper)
             end
-        elseif stream.cur.value == "do" or stream.cur.value == "if" then
+        elseif stream.tryConsume("do") or stream.tryConsume("if") then
             table.insert(nesting_is_function_expr, false)
         elseif stream.cur.value == "function" then
             local is_expr = parsers.funcDef(stream, chopper)
             table.insert(nesting_is_function_expr, is_expr)
-            goto next
-        elseif stream.cur.value == "end" then
+        elseif stream.tryConsume("end") then
             assert(next(nesting_is_function_expr), "unbalanced end")
             stream.cur.is_function_expr = table.remove(nesting_is_function_expr)
+        else
+            stream.nextToken()
         end
-
-        stream.nextToken()
-
-        ::next::
     end
 
     assert(not next(nesting_is_function_expr), "unbalanced end")
