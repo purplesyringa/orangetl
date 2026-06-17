@@ -298,21 +298,17 @@ class ref(Parser):
 # Adjusted from https://teal-language.org/book/latest/grammar.html.
 class grammar:
     # Type usage.
+    type = custom("parseType()")
     typeargs = parenthesized("<>")
-    nominal = alnum.separated(".") + maybe(typeargs)
-    typelist = ref("type").separated(",")
-    retlist = parenthesized("()") | typelist + maybe("...")
-    functiontype = "function" + maybe(typeargs) + parenthesized("()") + maybe(":", ref("retlist"))
-    basetype = parenthesized("{}") | functiontype | ref("nominal")
-    type = parenthesized("()") | basetype.separated("|")
+    retlist = custom("parseRetlist()")
 
     # Function definitions.
-    parlist = "(" + (":" + ref("type") | "?" | custom("skipToken()")).terminated(")")
-    funcbody = maybe(typeargs) + parlist + maybe(":", ref("retlist")) + custom("parseUntilEnd()")
+    parlist = "(" + (":" + type | "?" | custom("skipToken()")).terminated(")")
+    funcbody = maybe(typeargs) + parlist + maybe(":", retlist) + custom("parseUntilEnd()")
     functiondef = "function" + ref("funcbody")
 
     # Expressions.
-    field = maybe("[" + ref("exp") + "]" + "=" | alnum + maybe(":", ref("type")) + "=") + ref("exp")
+    field = maybe("[" + ref("exp") + "]" + "=" | alnum + maybe(":", type) + "=") + ref("exp")
     tableconstructor = "{" + (field + maybe(either(",", ";"))).terminated("}")
     args = "(" + (ref("exp") + maybe(",")).terminated(")") | string | ref("tableconstructor", tableconstructor)
     expsuf = "[" + ref("exp") + "]" | "." + alnum | ":" + alnum + ref("args", args) | ref("args", args)
@@ -320,33 +316,14 @@ class grammar:
     exp_nonrec = string | "..." | functiondef | ref("tableconstructor", tableconstructor) | ref("prefixexp")
     binop = either("+", "-", "*", "//", "/", "^", "%", "&", "|", ">>", "<<", "..", "<=", "<", ">=", ">", "==", "~=", "~", "and", "or")
     unop = either("-", "not", "#", "~")
-    as_op = "as" + (parenthesized("()") | ref("type"))
-    is_op = "is" + ref("type")
+    as_op = "as" + (parenthesized("()") | type)
+    is_op = "is" + type
     exp = (repeat(unop) + exp_nonrec + repeat(as_op | is_op)).separated(binop)
-
-    # Type definitions.
-    enumbody = string.terminated("end")
-    newtype = (
-        "record" + ref("recordbody")
-        | "enum" + enumbody
-        | "require" + parenthesized("()") + repeat(".", alnum)
-        | "type"
-    )
-    recordkey = parenthesized("[]") | alnum
-    interfacelist = parenthesized("{}") + repeat(",", ref("nominal")) | ref("nominal").separated(",")
-    recordentry = (
-        "userdata"
-        | "type" + alnum + "=" + ref("newtype")
-        | "record" + alnum + ref("recordbody")
-        | "enum" + alnum + enumbody
-        | maybe("metamethod") + recordkey + ":" + ref("type")
-    )
-    recordbody = maybe(typeargs) + maybe("is", interfacelist) + maybe("where", ref("exp")) + recordentry.terminated("end")
 
     # Statements.
     local_global_stat = (
         "function" + alnum + ref("funcbody")
-        | alnum.separated(",") + maybe(":", typelist) + maybe("=", ref("exp").separated(","))
+        | alnum.separated(",") + maybe(":", type.separated(",")) + maybe("=", ref("exp").separated(","))
     )
     stat = (
         "function" + alnum + repeat(".", alnum) + maybe(":", alnum) + ref("funcbody")

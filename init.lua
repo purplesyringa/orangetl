@@ -1,4 +1,4 @@
-local lex = require "lex"
+local chopper = require "chopper"
 local tokenstream = require "tokenstream"
 
 local function anyOf(s, pattern)
@@ -15,7 +15,7 @@ local parsers = {}
 -- An approximate, non-recursive parser that greps for structures we're interested in without
 -- constructing a syntax tree. It acts as a sieve, passing control to a better parser as it
 -- recognizes an important construct.
-function parsers.shallow(stream, until_end)
+function parsers.shallow(stream, chopper, until_end)
     local n = 0
 
     -- Tracks nested blocks/expressions that are finished by the `end` keyword. Used for `as`/`is`
@@ -24,7 +24,7 @@ function parsers.shallow(stream, until_end)
 
     while stream.cur.type ~= "eof" do
         if stream.cur.value == "local" then
-            parsers.localGlobal(stream)
+            parsers.localGlobal(stream, chopper)
             goto next
         elseif stream.cur.value == "global" then
             -- Since `global` is not a keyword, some occurrences of `global` may be identifiers. In
@@ -68,7 +68,7 @@ function parsers.shallow(stream, until_end)
                 is_keyword = true
             end
             if is_keyword then
-                parsers.localGlobal(stream)
+                parsers.localGlobal(stream, chopper)
                 goto next
             end
         elseif stream.cur.value == "as" or stream.cur.value == "is" then
@@ -93,7 +93,8 @@ function parsers.shallow(stream, until_end)
             else
                 -- alnum
                 if (
-                    -- An identifier, statement, or expression is expected.
+                    -- An identifier, statement, or expression is expected. This should also include
+                    -- `local _` and `local record _`, but we use a separate parser for that.
                     anyOf(stream.prev.value, "goto function for break do while repeat until if then elseif else in return")
                 ) then
                     is_keyword = false
@@ -105,22 +106,27 @@ function parsers.shallow(stream, until_end)
                     is_keyword = true
                 end
             end
+            if is_keyword then
+                if stream.cur.value == "as" then
+                    parsers.as(stream, chopper)
+                    goto next
+                else
+                    parsers.is(stream, chopper)
+                    goto next
+                end
+            end
         elseif stream.cur.value == "do" or stream.cur.value == "if" then
             table.insert(nesting_is_function_expr, false)
         elseif stream.cur.value == "function" then
             table.insert(nesting_is_function_expr, stream.next.type == "punct")
-            -- recordbody
-            -- enumbody
+            -- TODO: remove types
         elseif stream.cur.value == "end" then
+            -- TODO: uncomment
             -- if not next(nesting_is_function_expr) then
             --     assert(until_end, "unbalanced end")
             --     return
             -- end
             stream.cur.is_function_expr = table.remove(nesting_is_function_expr)
-        end
-
-        if stream.cur.is_local_global and anyOf(stream.next.value, "record interface enum type") then
-            table.remove(nesting_is_function_expr)
         end
 
         stream.nextToken()
@@ -143,26 +149,6 @@ function parsers.shallow(stream, until_end)
     --     if token == "function" then
     --         -- `function` is a keyword, so it being present anywhere indicates a function signature.
     --         parse.function_()
-    --     elseif token == "record" or token == "interface" then
-    --         -- These keywords are contextual, so they may also be names. Check if there's sufficient
-    --         -- context for these to be keywords. Real records/interfaces are defined as
-    --         --     local|global record|interface Name recordbody
-    --         -- ...where the presence of `local|global` before this token and an alnum token after
-    --         -- ensures this can't be anything but a keyword.
-    --         local prev_token, _, prev_first, _ = lastToken()
-    --         tokens()
-    --         if prev_token == "local" or prev_token == "global" then
-    --             local _, next_key = peekToken()
-    --             if next_key == "alnum" then
-    --                 -- This is a real definition.
-    --                 startCut(prev_first)
-    --                 tokens()
-    --                 parse.recordbody()
-    --                 endCut()
-    --             end
-    --         end
-    --     else
-    --         tokens()
     --     end
     --     n = n + 1
     -- end
@@ -172,7 +158,7 @@ end
 
 -- Parse a statement starting with `local` or `global`, before returning control to the shallow
 -- parser.
-function parsers.localGlobal(stream)
+function parsers.localGlobal(stream, chopper)
     local first = stream.cur.first
     local is_global = stream.cur.value == "global"
     stream.nextToken()
@@ -181,103 +167,257 @@ function parsers.localGlobal(stream)
         -- Parse `local record _`, etc. as a type definition if `_` is alnum. This isn't always
         -- correct per grammar, but it seems to be the same heuristic that Teal uses:
         -- https://github.com/teal-language/tl/issues/1132
-        local def_type = stream.cur.value
-        local name = stream.next.value
-        stream.nextToken()
-        stream.nextToken()
-
-        if def_type == "enum" then
-            -- parsers.enumBody(stream)
-        elseif def_type == "type" then
-            if stream.cur.value == "=" then
-                stream.nextToken()
-                -- parsers.newType(stream)
-            end
-        else
-            -- parsers.recordBody(stream)
-        end
-
-        -- stream.cut(first, stream.prev.last)
+        parsers.typeDefinition(stream)
+        -- chopper.cut(first, stream.prev.last)
     else
         -- Variable definition. We have to parse this until `:` or `=` to resolve attributes: both
         -- to remove `<total>` and to annotate the closing angle bracket for the shallow parser.
     end
 end
 
--- local function transpile(code)
---     local tokens, peekToken, lastToken = lex(code)
+-- Parses a type definition like `record ...`, returning code to replace it with. Assumes that the
+-- first token is `record`, `interface`, `enum`, or `type`, and the next token is alnum.
+function parsers.typeDefinition(stream)
+    local def_type = stream.cur.value
+    local name = stream.next.value
+    stream.nextToken()
+    stream.nextToken()
 
---     local cut_first = nil
---     local cut_nesting = 0
---     local function startCut(pos)
---         if cut_nesting == 0 then
---             if pos then
---                 cut_first = pos
---             else
---                 local _, _, first, _ = lastToken()
---                 cut_first = first
---             end
---         end
---         cut_nesting = cut_nesting + 1
---     end
---     local function endCut()
---         cut_nesting = cut_nesting - 1
---         if cut_nesting == 0 then
---             local _, _, _, last = lastToken()
---             print("Cut", cut_first, "to", last, code:sub(cut_first, last))
---         end
---     end
+    -- TODO: Convert the type definition to a value assignment for two purposes:
+    -- - To allow reexports of nested types to evaluate without triggering `nil` dereference,
+    --   e.g. in `return Type.Nested`.
+    -- - To populate the `__is` method for the `is` operator.
 
---     local parse = {}
+    if def_type == "enum" then
+        parsers.enumBody(stream)
+    elseif def_type == "type" then
+        if stream.cur.value == "=" then
+            stream.nextToken()
+            -- newtype
+            if anyOf(stream.cur.value, "record interface") then
+                stream.nextToken()
+                parsers.recordBody(stream)
+            elseif stream.cur.value == "enum" then
+                stream.nextToken()
+                parsers.enumBody(stream)
+            elseif stream.cur.value == "require" then
+                stream.nextToken()
+                assert(stream.cur.value == "(", "expected ( after require in newtype")
+                parsers.parenthesized(stream, "(", ")")
+                while stream.cur.value == "." do
+                    stream.nextToken()
+                    assert(stream.cur.type == "alnum", "expected identifier after .")
+                    stream.nextToken()
+                end
+            else
+                parsers.type(stream)
+            end
+        end
+    else
+        parsers.recordBody(stream)
+    end
 
---     function parse.parenthesized(open, close)
---         local nesting = 0
---         for token in tokens do
---             if token == open then
---                 nesting = nesting + 1
---             elseif token == close then
---                 nesting = nesting - 1
---                 if nesting == 0 then
---                     return
---                 end
---             end
---         end
---     end
+    -- chopper.cut(first, stream.prev.last)
+end
 
---     local n = 0
---     while true do
---         local token = peekToken()
---         if not token then
---             break
+function parsers.enumBody(stream)
+    while stream.cur.type == "string" do
+        stream.nextToken()
+    end
+    assert(stream.cur.value == "end", "enum can only contain strings")
+    stream.nextToken()
+end
+
+function parsers.recordBody(stream)
+    if stream.cur.value == "<" then
+        parsers.parenthesized(stream, "<", ">")
+    end
+
+    -- Teal does not consider `is` or `where` valid recordkeys, so there is no
+    -- `stream.next.value ~= ":"` check here.
+    if stream.cur.value == "is" then
+        stream.nextToken()
+        -- interfacelist
+        parsers.baseType(stream)
+        while stream.cur.value == "," do
+            stream.nextToken()
+            parsers.baseType(stream)
+        end
+    end
+    if stream.cur.value == "where" then
+        stream.nextToken()
+        -- oopsie daisy, exp
+        print("oopsie daisy, where!")
+    end
+
+    while stream.cur.value ~= "end" do
+        -- recordentry
+        if (
+            -- Ignore `userdata` when used as an identifier, e.g. in `userdata: type`.
+            stream.cur.value == "userdata" and stream.next.type ~= "alnum"
+        ) then
+            stream.nextToken()
+        elseif anyOf(stream.cur.value, "record interface enum type") and stream.next.type == "alnum" then
+            parsers.typeDefinition(stream)
+        else
+            if stream.cur.value == "metamethod" then
+                stream.nextToken()
+            end
+            -- recordkey
+            if stream.cur.value == "[" then
+                parsers.parenthesized(stream, "[", "]")
+            elseif stream.cur.type == "alnum" then
+                stream.nextToken()
+            else
+                error("invalid recordkey")
+            end
+            assert(stream.cur.value == ":", "expected : after recordkey in recordbody")
+            stream.nextToken()
+            parsers.type(stream)
+        end
+    end
+    stream.nextToken()
+end
+
+-- Cut `as` casts.
+function parsers.as(stream, chopper)
+    local first = stream.cur.first
+    stream.nextToken()
+    if stream.cur.value == "(" then
+        -- Teal supports parenthesized typelists after `as`, which `type` doesn't recognize.
+        parsers.parenthesized(stream, "(", ")")
+    else
+        parsers.type(stream)
+    end
+    chopper.cut(first, stream.prev.last)
+end
+
+-- Lower `is` checks.
+function parsers.is(stream, chopper)
+    assert(stream.prev.type == "alnum", "'is' is only allowed after names")
+    local first = stream.prev.first
+    local name = stream.prev.value
+    stream.nextToken()
+    local base_types = parsers.type(stream)
+
+    local conditions = {}
+    for i, base_type in ipairs(base_types) do
+        if type(base_type) == "string" then
+            conditions[i] = ('type(%s) == "%s"'):format(name, base_type)
+        else
+            base_type = stream.code:sub(base_type.first, base_type.last)
+            conditions[i] = ('%s.__is(%s)'):format(base_type, name)
+        end
+    end
+    chopper.cut(first, stream.prev.last, table.concat(conditions, " or "))
+end
+
+-- Parse a type, returning a list of base types as parsed by `parsers.baseType`.
+function parsers.type(stream)
+    if stream.cur.value == "(" then
+        stream.nextToken()
+        local type = parsers.type(stream)
+        assert(stream.cur.value == ")", "expected ) in parenthesized type")
+        stream.nextToken()
+        return type
+    end
+    local base_types = { parsers.baseType(stream) }
+    while stream.cur.value == "|" do
+        stream.nextToken()
+        table.insert(base_types, parsers.baseType(stream))
+    end
+    return base_types
+end
+
+-- Parse a base type, returning "string", "boolean", "nil", "number", "table", or "function" for
+-- structured types, and `{ first = _, last = _ }` for nominal types (ignoring typeargs).
+function parsers.baseType(stream)
+    if anyOf(stream.cur.value, "string boolean nil number") then
+        stream.nextToken()
+        return stream.prev.value
+    elseif stream.cur.value == "{" then
+        stream.nextToken()
+        parsers.type(stream)
+        if stream.cur.value == ":" then
+            -- map
+            stream.nextToken()
+            parsers.type(stream)
+        else
+            -- array or tuple
+            while stream.cur.value == "," do
+                stream.nextToken()
+                parsers.type(stream)
+            end
+        end
+        assert(stream.cur.value == "}", "missing } in basetype")
+        stream.nextToken()
+        return "table"
+    elseif stream.cur.value == "function" then
+        stream.nextToken()
+        if stream.cur.value == "<" then
+            parsers.parenthesized(stream, "<", ">")
+        end
+        assert(stream.cur.value == "(", "missing ( after function in function type")
+        parsers.parenthesized(stream, "(", ")")
+        if stream.cur.value == ":" then
+            stream.nextToken()
+            parsers.retList(stream)
+        end
+        return "function"
+    elseif stream.cur.type == "alnum" then
+        -- nominal type
+        local first = stream.cur.first
+        stream.nextToken()
+        while stream.cur.value == "." do
+            stream.nextToken()
+            assert(stream.cur.type == "alnum", "expected identifier after .")
+            stream.nextToken()
+        end
+        local last = stream.prev.last
+        if stream.cur.value == "<" then
+            parsers.parenthesized(stream, "<", ">")
+        end
+        return { first = first, last = last }
+    else
+        error("invalid basetype")
+    end
+end
+
+function parsers.retList(stream)
+    if stream.cur.value == "(" then
+        parsers.parenthesized(stream, "(", ")")
+    else
+        parsers.type(stream)
+        while stream.cur.value == "," do
+            stream.nextToken()
+            parsers.type(stream)
+        end
+        if stream.cur.value == "..." then
+            stream.nextToken()
+        end
+    end
+end
+
+function parsers.parenthesized(stream, open, close)
+    local nesting = 0
+    while stream.cur.type ~= "eof" do
+        local value = stream.cur.value
+        stream.nextToken()
+        if value == open then
+            nesting = nesting + 1
+        elseif value == close then
+            nesting = nesting - 1
+            if nesting == 0 then
+                return
+            end
+        end
+    end
+    assert("eof before " .. close)
+end
+
 --         elseif token == "function" then
 --             -- `function` is a keyword, so it being present anywhere indicates a function signature.
 --             parse.function_()
---         elseif token == "record" or token == "interface" then
---             -- These keywords are contextual, so they may also be names. Check if there's sufficient
---             -- context for these to be keywords. Real records/interfaces are defined as
---             --     local|global record|interface Name recordbody
---             -- ...where the presence of `local|global` before this token and an alnum token after
---             -- ensures this can't be anything but a keyword.
---             local prev_token, _, prev_first, _ = lastToken()
---             tokens()
---             if prev_token == "local" or prev_token == "global" then
---                 local _, next_key = peekToken()
---                 if next_key == "alnum" then
---                     -- This is a real definition.
---                     startCut(prev_first)
---                     tokens()
---                     parse.recordbody()
---                     endCut()
---                 end
---             end
---         else
---             tokens()
---         end
---         n = n + 1
---     end
-
---     print(n)
--- end
 
 -- local vfs = require "vfs"
 -- local content = vfs.read("acc.lua")
@@ -289,4 +429,4 @@ local f = io.open(arg[1], "rb")
 local content = f:read("*a")
 f:close()
 
-parsers.shallow(tokenstream.lexerToTokenStream(lex.lex(content)))
+parsers.shallow(tokenstream.makeTokenStream(content), chopper.makeChopper(content))

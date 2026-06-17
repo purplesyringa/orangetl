@@ -1,6 +1,17 @@
-local function lexerToTokenStream(lexer)
+local lex = require "lex"
+
+local function makeTokenStream(code)
     local e = { value = "", type = "sof" }
-    local stream = { prev3 = e, prev2 = e, prev = e, cur = e, next = e, next2 = e }
+    local stream = {
+        code = code,
+        prev3 = e,
+        prev2 = e,
+        prev = e,
+        cur = e,
+        next = e,
+        next2 = e,
+    }
+    local lexer = lex.lex(code)
 
     function stream.nextToken()
         local value, type, first, last
@@ -37,5 +48,5 @@ local function lexerToTokenStream(lexer)
 end
 
 return {
-    lexerToTokenStream = lexerToTokenStream,
+    makeTokenStream = makeTokenStream,
 }
