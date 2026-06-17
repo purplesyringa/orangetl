@@ -20,6 +20,7 @@ local parsers = {}
 -- - `eof`: matches until the end of file.
 -- - `]`, `)`, `}`: matches until the first closing bracket not matching any open bracket in the
 --   stream.
+-- - `end`: matches until the first `end` not matching any open block in the stream.
 function parsers.shallow(stream, chopper, until_what)
     local n = 0
 
@@ -144,11 +145,27 @@ function parsers.shallow(stream, chopper, until_what)
             end
         elseif stream.tryConsume("do") or stream.tryConsume("if") then
             table.insert(nesting_is_function_expr, false)
-        elseif stream.cur.value == "function" then
-            local is_expr = parsers.funcDef(stream, chopper)
-            table.insert(nesting_is_function_expr, is_expr)
+        elseif stream.tryConsume("function") then
+            local has_name = stream.cur.type == "alnum"
+            if has_name then
+                -- funcname
+                stream.nextToken()
+                while stream.tryConsume(".") do
+                    assert(stream.cur.type == "alnum", "expected identifier after .")
+                    stream.nextToken()
+                end
+                if stream.tryConsume(":") then
+                    assert(stream.cur.type == "alnum", "expected identifier after :")
+                    stream.nextToken()
+                end
+            end
+            parsers.funcBodySignature(stream, chopper)
+            table.insert(nesting_is_function_expr, not has_name)
         elseif stream.tryConsume("end") then
-            assert(next(nesting_is_function_expr), "unbalanced end")
+            if not next(nesting_is_function_expr) then
+                assert(until_what == "end", "unbalanced end")
+                return
+            end
             stream.cur.is_function_expr = table.remove(nesting_is_function_expr)
         else
             stream.nextToken()
@@ -445,25 +462,8 @@ function parsers.baseType(stream)
     end
 end
 
--- Parse `function [name] ...`, stopping just before the body. Returns whether the function had
--- a name, assumes the first token is `function`.
-function parsers.funcDef(stream, chopper)
-    stream.nextToken()
-
-    local has_name = stream.cur.type == "alnum"
-    if has_name then
-        -- funcname
-        stream.nextToken()
-        while stream.tryConsume(".") do
-            assert(stream.cur.type == "alnum", "expected identifier after .")
-            stream.nextToken()
-        end
-        if stream.tryConsume(":") then
-            assert(stream.cur.type == "alnum", "expected identifier after :")
-            stream.nextToken()
-        end
-    end
-
+-- Parse `funcbody`, cutting out type annotations, stopping just before the block.
+function parsers.funcBodySignature(stream, chopper)
     parsers.maybeTypeArgs(stream, chopper)
 
     assert(stream.tryConsume("("), "expected ( in function definition")
@@ -485,8 +485,6 @@ function parsers.funcDef(stream, chopper)
         parsers.retList(stream)
         chopper.cut(first, stream.prev.last)
     end
-
-    return has_name
 end
 
 function parsers.retList(stream)
@@ -521,7 +519,8 @@ function parsers.exp(stream, chopper)
             assert(stream.tryConsume("."), "expected ... in expression context")
             assert(stream.tryConsume("."), "expected ... in expression context")
         elseif stream.tryConsume("function") then
-            parsers.funcbody() -- TODO: implement
+            parsers.funcBodySignature(stream, chopper)
+            parsers.shallow(stream, chopper, "end")
         elseif stream.tryConsume("{") then
             parsers.shallow(stream, chopper, "}")
         else
