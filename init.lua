@@ -243,18 +243,8 @@ function parsers.typeDefinition(stream, chopper, allow_empty)
             end
         else
             local first = stream.cur.first
-            local base_types = parsers.type(stream)
-
-            local conditions = {}
-            for i, base_type in ipairs(base_types) do
-                if type(base_type) == "string" then
-                    conditions[i] = ('type(self) == "%s"'):format(base_type)
-                else
-                    base_type = stream.code:sub(base_type.first, base_type.last)
-                    conditions[i] = ('%s.__is(self)'):format(base_type)
-                end
-            end
-            local def = ("{ __is = function(self) return %s end }"):format(table.concat(conditions, " or "))
+            local condition = parsers.type(stream)
+            local def = "{ __is = function(self) return " .. condition:gsub("$", "self") .. " end }"
             chopper.cut(first, stream.prev.last, def)
         end
     else
@@ -369,40 +359,35 @@ function parsers.is(stream, chopper)
     local first = stream.prev.first
     local name = stream.prev.value
     stream.nextToken()
-    local base_types = parsers.type(stream)
-
-    local conditions = {}
-    for i, base_type in ipairs(base_types) do
-        if type(base_type) == "string" then
-            conditions[i] = ('type(%s) == "%s"'):format(name, base_type)
-        else
-            base_type = stream.code:sub(base_type.first, base_type.last)
-            conditions[i] = ('%s.__is(%s)'):format(base_type, name)
-        end
-    end
-    chopper.cut(first, stream.prev.last, table.concat(conditions, " or "))
+    local condition = parsers.type(stream)
+    chopper.cut(first, stream.prev.last, "(" .. condition:gsub("$", name) .. ")")
 end
 
--- Parse a type, returning a list of base types as parsed by `parsers.baseType`.
+-- Parse a type, returning a condition similar to `parsers.baseType`.
 function parsers.type(stream)
     if stream.tryConsume("(") then
-        local type = parsers.type(stream)
+        local condition = parsers.type(stream)
         assert(stream.tryConsume(")"), "expected ) in parenthesized type")
-        return type
+        return condition
     end
-    local base_types = { parsers.baseType(stream) }
+    local conditions = { parsers.baseType(stream) }
     while stream.tryConsume("|") do
-        table.insert(base_types, parsers.baseType(stream))
+        table.insert(conditions, parsers.baseType(stream))
     end
-    return base_types
+    return table.concat(conditions, " or ")
 end
 
--- Parse a base type, returning "string", "boolean", "nil", "number", "table", or "function" for
--- structured types, and `{ first = _, last = _ }` for nominal types (ignoring typeargs).
+-- Parse a base type, returning a condition checking whether a value is of this type according to
+-- the logic of the `is` operator. `$` is substituted for the variable name that is being checked.
 function parsers.baseType(stream)
-    if anyOf(stream.cur.value, "string boolean nil number") then
+    if anyOf(stream.cur.value, "string boolean nil number thread table") then
         stream.nextToken()
-        return stream.prev.value
+        return 'type($) == "' .. stream.prev.value .. '"'
+    elseif stream.tryConsume("any") then
+        -- Weird, but that's the way it's lowered.
+        return 'type($) == "table"'
+    elseif stream.tryConsume("integer") then
+        return 'math.type($) == "integer"'
     elseif stream.tryConsume("{") then
         parsers.type(stream)
         if stream.tryConsume(":") then
@@ -415,7 +400,7 @@ function parsers.baseType(stream)
             end
         end
         assert(stream.tryConsume("}"), "missing } in basetype")
-        return "table"
+        return 'type($) == "table"'
     elseif stream.tryConsume("function") then
         parsers.maybeTypeArgs(stream)
         assert(stream.cur.value == "(", "missing ( after function in function type")
@@ -423,7 +408,7 @@ function parsers.baseType(stream)
         if stream.tryConsume(":") then
             parsers.retList(stream)
         end
-        return "function"
+        return 'type($) == "function"'
     elseif stream.cur.type == "alnum" then
         -- nominal type
         local first = stream.prev.first
@@ -434,7 +419,7 @@ function parsers.baseType(stream)
         end
         local last = stream.prev.last
         parsers.maybeTypeArgs(stream)
-        return { first = first, last = last }
+        return stream.code:sub(first, last)
     else
         error("invalid basetype")
     end
