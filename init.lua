@@ -213,10 +213,11 @@ function parsers.localGlobal(stream, chopper)
             if stream.tryConsume("<") then
                 local first = stream.prev.first
                 assert(stream.cur.type == "alnum", "expected identifier in attribute")
-                local name = stream.nextToken()
+                local attr = stream.cur.value
+                stream.nextToken()
                 assert(stream.tryConsume(">"), "invalid attribute syntax")
                 stream.prev.is_attribute = true
-                if name == "total" then
+                if attr == "total" then
                     chopper.cut(first, stream.prev.last)
                 end
             end
