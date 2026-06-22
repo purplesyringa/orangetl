@@ -283,7 +283,7 @@ function parsers.typeDefinition(stream, chopper, allow_empty)
             stream.nextToken()
             parsers.recordBody(stream, chopper)
         elseif stream.tryConsume("enum") then
-            chopper.cut(stream.cur.first, stream.next.first - 1)
+            chopper.cut(stream.prev.first, stream.cur.first - 1)
             parsers.enumBody(stream, chopper)
         elseif stream.tryConsume("require") then
             -- Keep the `require` as-is, since it's already syntactically correct.
@@ -363,14 +363,16 @@ function parsers.recordBody(stream, chopper)
         local do_cut = true
         if (
             -- Ignore `userdata` when used as an identifier, e.g. in `userdata: type`.
-            stream.cur.value == "userdata" and stream.next.type ~= "alnum"
+            stream.cur.value == "userdata" and stream.next.value ~= ":"
         ) then
             stream.nextToken()
         elseif anyOf(stream.cur.value, "record interface enum type") and stream.next.type == "alnum" then
             parsers.typeDefinition(stream, chopper)
             do_cut = false
         else
-            stream.tryConsume("metamethod")
+            if stream.next.value ~= ":" then
+                stream.tryConsume("metamethod")
+            end
             -- recordkey
             if stream.cur.value == "[" then
                 parsers.parenthesized(stream, "[", "]")
@@ -441,25 +443,17 @@ function parsers.baseType(stream)
         return 'type(!) == "table"'
     elseif stream.tryConsume("integer") then
         return 'math.type(!) == "integer"'
-    elseif stream.tryConsume("{") then
-        parsers.type(stream)
-        if stream.tryConsume(":") then
-            -- map
-            parsers.type(stream)
-        else
-            -- array or tuple
-            while stream.tryConsume(",") do
-                parsers.type(stream)
-            end
-        end
-        assert(stream.tryConsume("}"), "missing } in basetype")
+    elseif stream.cur.value == "{" then
+        parsers.parenthesized(stream, "{", "}")
         return 'type(!) == "table"'
     elseif stream.tryConsume("function") then
         parsers.maybeTypeArgs(stream)
-        assert(stream.cur.value == "(", "missing ( after function in function type")
-        parsers.parenthesized(stream, "(", ")")
-        if stream.tryConsume(":") then
-            parsers.retList(stream)
+        -- `function` or `function<...>` alone denotes an arbitrary function.
+        if stream.cur.value == "(" then
+            parsers.parenthesized(stream, "(", ")")
+            if stream.tryConsume(":") then
+                parsers.retList(stream)
+            end
         end
         return 'type(!) == "function"'
     elseif stream.cur.type == "alnum" then
