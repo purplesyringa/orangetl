@@ -13,6 +13,7 @@ end
 local Transpiler = {}
 
 local function transpile(code, lua_quirks)
+    code = code:gsub("^#[^\n]*", "") -- remove shebang
     local transpiler = setmetatable({
         code = code,
         stream = tokenstream.makeTokenStream(code),
