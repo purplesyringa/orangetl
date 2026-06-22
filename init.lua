@@ -12,13 +12,13 @@ end
 
 local Transpiler = {}
 
-local function transpile(code, lua_quirks)
+local function transpile(code, opts)
     code = code:gsub("^#[^\n]*", "") -- remove shebang
     local transpiler = setmetatable({
         code = code,
         stream = tokenstream.makeTokenStream(code),
         chopper = chopping.makeChopper(code),
-        lua_quirks = lua_quirks,
+        opts = opts or {},
     }, { __index = Transpiler })
     transpiler:parseShallow("eof")
     return transpiler.chopper.finish()
@@ -200,7 +200,7 @@ function Transpiler:parseShallow(until_what)
                 anyOf(self.stream.prev.type, "alnum string")
                 or anyOf(self.stream.prev.value, ") ] }")
             )
-            and not self.lua_quirks
+            and not self.opts.lua_quirks
         ) then
             -- Teal idiosyncrasy
             self.chopper.insert(self.stream.prev.last + 1, ";")
@@ -256,7 +256,11 @@ function Transpiler:parseLocalGlobal()
                 self.stream.nextToken()
                 assert(self.stream.tryConsume(">"), "invalid attribute syntax")
                 self.stream.prev.is_attribute = true
-                if attr == "total" then
+                if self.opts.strip_attributes then
+                    -- Stripping `<close>` affects semantics.
+                    assert(attr == "const" or attr == "total", "cannot strip attribute '" .. attr .. "'")
+                end
+                if self.opts.strip_attributes or attr == "total" then
                     self.chopper.cut(first, self.stream.prev.last)
                 end
             end
@@ -587,7 +591,7 @@ function Transpiler:parseExp()
                 elseif (
                     self.stream.cur.value == "("
                     and self.stream.cur.line > self.stream.prev.line
-                    and not self.lua_quirks
+                    and not self.opts.lua_quirks
                 ) then
                     -- Teal idiosyncrasy
                     self.chopper.insert(self.stream.prev.last + 1, ";")
