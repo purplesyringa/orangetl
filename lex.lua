@@ -17,8 +17,8 @@ local function lex(code)
             return nil
         end
 
-        -- Skip whitespace.
-        cur_pos = code:find("[^%s]", cur_pos)
+        -- Skip whitespace, except for `\n`, which is used to track line numbers.
+        cur_pos = code:find("[^ \r\t\v\f]", cur_pos)
         if not cur_pos then
             return nil
         end
@@ -45,8 +45,13 @@ local function lex(code)
         if token_entry.first > cur_pos then
             -- Not a known token, assume punctuation.
             local pos = cur_pos
+            local value = code:sub(pos, pos)
             cur_pos = cur_pos + 1
-            return code:sub(pos, pos), "punct", pos, pos
+            if value == "\n" then
+                return "", "newline", pos, pos
+            else
+                return code:sub(pos, pos), "punct", pos, pos
+            end
         end
 
         -- Find the end of this token.

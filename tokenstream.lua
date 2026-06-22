@@ -1,7 +1,7 @@
 local lex = require "lex"
 
 local function makeTokenStream(code)
-    local e = { value = "", type = "sof" }
+    local e = { value = "", type = "sof", first = 1, last = 1, line = 1 }
     local stream = {
         code = code,
         prev3 = e,
@@ -12,22 +12,35 @@ local function makeTokenStream(code)
         next2 = e,
     }
     local lexer = lex.lex(code)
+    local line = 1
 
     function stream.nextToken()
         local value, type, first, last
         repeat
             value, type, first, last = lexer()
-        until type ~= "comment"
+            if type == "newline" then
+                line = line + 1
+            end
+        until type ~= "comment" and type ~= "newline"
         if type == "short_string" or type == "long_string" then
             type = "string"
         end
-        local token = { value = "", type = "eof", first = #code + 1, last = #code + 1 }
+        local token
         if value then
             token = {
                 value = value,
                 type = type,
                 first = first,
                 last = last,
+                line = line,
+            }
+        else
+            token = {
+                value = "",
+                type = "eof",
+                first = #code + 1,
+                last = #code + 1,
+                line = line,
             }
         end
 

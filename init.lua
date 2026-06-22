@@ -176,6 +176,17 @@ function parsers.shallow(stream, chopper, until_what)
             stream.nextToken()
             parsers.type(stream)
             chopper.cut(first, stream.prev.last)
+        elseif (
+            stream.cur.value == "(" and stream.cur.line > stream.prev.line
+            -- Match parentheses in a function call, but not in grouping. Types
+            -- (`function(...)` and `(type)`) and function signatures (`function [name](...)`) are
+            -- automatically excluded because they are parsed separately. This erronously recognizes
+            -- `where (...)` as a call, but `where` is parsed by the `exp` parser, not this one.
+            and (anyOf(stream.prev.type, "alnum string") or anyOf(stream.prev.value, ") ] }"))
+        ) then
+            -- Teal idiosyncrasy
+            chopper.insert(stream.prev.last + 1, ";")
+            stream.nextToken()
         else
             stream.nextToken()
         end
@@ -548,6 +559,10 @@ function parsers.exp(stream, chopper)
                     assert(stream.cur.type == "alnum", "expected identifier after :")
                     stream.nextToken()
                     parsers.args(stream, chopper)
+                elseif stream.cur.value == "(" and stream.cur.line > stream.prev.line then
+                    -- Teal idiosyncrasy
+                    chopper.insert(stream.prev.last + 1, ";")
+                    break
                 elseif anyOf(stream.cur.value, "( {") or stream.cur.type == "string" then
                     parsers.args(stream, chopper)
                 else
