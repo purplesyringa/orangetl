@@ -22,8 +22,6 @@ local parsers = {}
 --   stream.
 -- - `end`: matches until the first `end` not matching any open block in the stream.
 function parsers.shallow(stream, chopper, until_what)
-    local n = 0
-
     -- Tracks nested blocks/expressions that are finished by the `end` keyword. Used for `as`/`is`
     -- resolution in edge cases. `true` for function expressions, `false` for everything else.
     local nesting_is_function_expr = {}
@@ -335,7 +333,6 @@ function parsers.recordBody(stream, chopper)
     -- `stream.next.value ~= ":"` check here.
     if stream.tryConsume("is") then
         -- interfacelist
-        local first = stream.prev.first
         parsers.baseType(stream)
         while stream.tryConsume(",") do
             parsers.baseType(stream)

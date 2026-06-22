@@ -11,8 +11,6 @@ local function lex(code)
     }
 
     local cur_pos = 1
-    local peeked = nil
-    local last_token = nil
 
     return function()
         if not cur_pos then
