@@ -3,7 +3,6 @@ local lex = require "lex"
 local function makeTokenStream(code)
     local e = { value = "", type = "sof", first = 1, last = 1, line = 1 }
     local stream = {
-        code = code,
         prev3 = e,
         prev2 = e,
         prev = e,

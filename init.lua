@@ -12,10 +12,11 @@ end
 
 local Transpiler = {}
 
-local function transpile(content)
+local function transpile(code)
     local transpiler = setmetatable({
-        stream = tokenstream.makeTokenStream(content),
-        chopper = chopping.makeChopper(content),
+        code = code,
+        stream = tokenstream.makeTokenStream(code),
+        chopper = chopping.makeChopper(code),
     }, { __index = Transpiler })
     transpiler:parseShallow("eof")
     return transpiler.chopper.finish()
@@ -488,7 +489,7 @@ function Transpiler:parseBaseType()
         end
         local last = self.stream.prev.last
         self:maybeParseTypeArgs()
-        return self.stream.code:sub(first, last) .. ".__is(!)"
+        return self.code:sub(first, last) .. ".__is(!)"
     else
         error("invalid basetype")
     end
