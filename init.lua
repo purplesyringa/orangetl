@@ -12,11 +12,12 @@ end
 
 local Transpiler = {}
 
-local function transpile(code)
+local function transpile(code, lua_quirks)
     local transpiler = setmetatable({
         code = code,
         stream = tokenstream.makeTokenStream(code),
         chopper = chopping.makeChopper(code),
+        lua_quirks = lua_quirks,
     }, { __index = Transpiler })
     transpiler:parseShallow("eof")
     return transpiler.chopper.finish()
@@ -198,6 +199,7 @@ function Transpiler:parseShallow(until_what)
                 anyOf(self.stream.prev.type, "alnum string")
                 or anyOf(self.stream.prev.value, ") ] }")
             )
+            and not self.lua_quirks
         ) then
             -- Teal idiosyncrasy
             self.chopper.insert(self.stream.prev.last + 1, ";")
@@ -584,6 +586,7 @@ function Transpiler:parseExp()
                 elseif (
                     self.stream.cur.value == "("
                     and self.stream.cur.line > self.stream.prev.line
+                    and not self.lua_quirks
                 ) then
                     -- Teal idiosyncrasy
                     self.chopper.insert(self.stream.prev.last + 1, ";")
