@@ -10,7 +10,16 @@ local function anyOf(s, pattern)
     return false
 end
 
-local parsers = {}
+local Transpiler = {}
+
+local function transpile(content)
+    local transpiler = setmetatable({
+        stream = tokenstream.makeTokenStream(content),
+        chopper = chopping.makeChopper(content),
+    }, { __index = Transpiler })
+    transpiler:parseShallow("eof")
+    return transpiler.chopper.finish()
+end
 
 -- An approximate, non-recursive parser that greps for structures we're interested in without
 -- constructing a syntax tree. It acts as a sieve, passing control to a better parser as it
@@ -21,7 +30,7 @@ local parsers = {}
 -- - `]`, `)`, `}`: matches until the first closing bracket not matching any open bracket in the
 --   stream.
 -- - `end`: matches until the first `end` not matching any open block in the stream.
-function parsers.shallow(stream, chopper, until_what)
+function Transpiler:parseShallow(until_what)
     -- Tracks nested blocks/expressions that are finished by the `end` keyword. Used for `as`/`is`
     -- resolution in edge cases. `true` for function expressions, `false` for everything else.
     local nesting_is_function_expr = {}
@@ -35,47 +44,47 @@ function parsers.shallow(stream, chopper, until_what)
 
     while true do
         -- Check exit condition.
-        if stream.cur.type == "eof" then
+        if self.stream.cur.type == "eof" then
             assert(until_what == "eof", "unexpected EOF")
             break
         end
         if opening_paren then
-            if stream.cur.value == opening_paren then
+            if self.stream.cur.value == opening_paren then
                 paren_nesting = paren_nesting + 1
-            elseif stream.cur.value == until_what then
+            elseif self.stream.cur.value == until_what then
                 paren_nesting = paren_nesting - 1
                 if paren_nesting == -1 then
-                    stream.nextToken()
+                    self.stream.nextToken()
                     break
                 end
             end
         end
 
-        if stream.cur.value == "local" then
-            parsers.localGlobal(stream, chopper)
-        elseif stream.cur.value == "global" then
+        if self.stream.cur.value == "local" then
+            self:parseLocalGlobal()
+        elseif self.stream.cur.value == "global" then
             -- Since `global` is not a keyword, some occurrences of `global` may be identifiers. In
             -- fact, since `global = 1` is parsed as an assignment, it's not even guaranteed to be
             -- a keyword if it's at the beginning of a statement.
             local is_keyword
-            if stream.next.type ~= "alnum" then
+            if self.stream.next.type ~= "alnum" then
                 is_keyword = false
             elseif (
                 -- Does this position not accept a statement?
                 -- An expression (or block end) is expected.
-                anyOf(stream.prev.value, "if elseif in while until = [ ( { return , + - * / ^ % & ~ | < # and or not")
-                or stream.prev.value == ">" and not stream.prev.is_attribute
+                anyOf(self.stream.prev.value, "if elseif in while until = [ ( { return , + - * / ^ % & ~ | < # and or not")
+                or self.stream.prev.value == ">" and not self.stream.prev.is_attribute
                 -- An identifier is expected. This should also include `local _` and
                 -- `local record _`, etc., but we use a separate parser for that.
-                or anyOf(stream.prev.value, "goto function for .")
+                or anyOf(self.stream.prev.value, "goto function for .")
                 -- Method syntax, not a label.
-                or stream.prev.value == ":" and stream.prev2.value ~= ":"
+                or self.stream.prev.value == ":" and self.stream.prev2.value ~= ":"
                 -- Followed by a binary operator.
-                or anyOf(stream.next.value, "and or")
+                or anyOf(self.stream.next.value, "and or")
             ) then
                 is_keyword = false
-            elseif anyOf(stream.next.value, "as is") then
-                if anyOf(stream.next2.value, "< , : =") then
+            elseif anyOf(self.stream.next.value, "as is") then
+                if anyOf(self.stream.next2.value, "< , : =") then
                     -- Definition of a variable named `is` or `as`.
                     is_keyword = false
                 else
@@ -95,100 +104,105 @@ function parsers.shallow(stream, chopper, until_what)
                 is_keyword = true
             end
             if is_keyword then
-                parsers.localGlobal(stream, chopper)
+                self:parseLocalGlobal()
             else
-                stream.nextToken()
+                self.stream.nextToken()
             end
-        elseif stream.cur.value == "as" or stream.cur.value == "is" then
+        elseif self.stream.cur.value == "as" or self.stream.cur.value == "is" then
             -- `as|is (type)` may either be an operator use or a function call depending on context.
             local is_keyword
-            if stream.prev.type == "string" then
+            if self.stream.prev.type == "string" then
                 is_keyword = true
-            elseif stream.prev.type == "punct" then
-                if anyOf(stream.prev.value, ") ] }") then
+            elseif self.stream.prev.type == "punct" then
+                if anyOf(self.stream.prev.value, ") ] }") then
                     is_keyword = true
                 elseif (
                     -- `...`, split into three tokens.
-                    stream.prev.value == "." and stream.prev2.value == "." and stream.prev3.value == "."
+                    self.stream.prev.value == "."
+                    and self.stream.prev2.value == "."
+                    and self.stream.prev3.value == "."
                 ) then
                     is_keyword = true
                 else
                     -- An expression, statement, or identifier is expected.
                     is_keyword = false
                 end
-            elseif stream.prev.type == "sof" then
+            elseif self.stream.prev.type == "sof" then
                 is_keyword = false
             else
                 -- alnum
                 if (
                     -- An identifier, statement, or expression is expected. This should also include
                     -- `local _` and `local record _`, etc., but we use a separate parser for that.
-                    anyOf(stream.prev.value, "goto function for break do while repeat until if then elseif else in return")
+                    anyOf(self.stream.prev.value, "goto function for break do while repeat until if then elseif else in return")
                 ) then
                     is_keyword = false
-                elseif stream.prev.value == "end" then
+                elseif self.stream.prev.value == "end" then
                     -- Depends on whether `end` corresponds to a function expression.
-                    is_keyword = stream.prev.is_function_expr
+                    is_keyword = self.stream.prev.is_function_expr
                 else
                     -- Normal identifier.
                     is_keyword = true
                 end
             end
             if not is_keyword then
-                stream.nextToken()
-            elseif stream.cur.value == "as" then
-                parsers.as(stream, chopper)
+                self.stream.nextToken()
+            elseif self.stream.cur.value == "as" then
+                self:parseAs()
             else
-                parsers.is(stream, chopper)
+                self:parseIs()
             end
-        elseif stream.tryConsume("do") or stream.tryConsume("if") then
+        elseif self.stream.tryConsume("do") or self.stream.tryConsume("if") then
             table.insert(nesting_is_function_expr, false)
-        elseif stream.tryConsume("function") then
-            local has_name = stream.cur.type == "alnum"
+        elseif self.stream.tryConsume("function") then
+            local has_name = self.stream.cur.type == "alnum"
             if has_name then
                 -- funcname
-                stream.nextToken()
-                while stream.tryConsume(".") do
-                    assert(stream.cur.type == "alnum", "expected identifier after .")
-                    stream.nextToken()
+                self.stream.nextToken()
+                while self.stream.tryConsume(".") do
+                    assert(self.stream.cur.type == "alnum", "expected identifier after .")
+                    self.stream.nextToken()
                 end
-                if stream.tryConsume(":") then
-                    assert(stream.cur.type == "alnum", "expected identifier after :")
-                    stream.nextToken()
+                if self.stream.tryConsume(":") then
+                    assert(self.stream.cur.type == "alnum", "expected identifier after :")
+                    self.stream.nextToken()
                 end
             end
-            parsers.funcBodySignature(stream, chopper)
+            self:parseFuncBodySignature()
             table.insert(nesting_is_function_expr, not has_name)
-        elseif stream.tryConsume("end") then
+        elseif self.stream.tryConsume("end") then
             if not next(nesting_is_function_expr) then
                 assert(until_what == "end", "unbalanced end")
                 return
             end
-            stream.cur.is_function_expr = table.remove(nesting_is_function_expr)
+            self.stream.cur.is_function_expr = table.remove(nesting_is_function_expr)
         elseif (
             -- Recognize `field: type =` in table constructor, ignoring `:` in method calls.
-            stream.cur.value == ":" and not (
-                stream.next.type == "alnum" and stream.next.value ~= "function"
-                and (stream.next2.type == "string" or anyOf(stream.next2.value, "( {"))
+            self.stream.cur.value == ":" and not (
+                self.stream.next.type == "alnum" and self.stream.next.value ~= "function"
+                and (self.stream.next2.type == "string" or anyOf(self.stream.next2.value, "( {"))
             )
         ) then
-            local first = stream.cur.first
-            stream.nextToken()
-            parsers.type(stream)
-            chopper.cut(first, stream.prev.last)
+            local first = self.stream.cur.first
+            self.stream.nextToken()
+            self:parseType()
+            self.chopper.cut(first, self.stream.prev.last)
         elseif (
-            stream.cur.value == "(" and stream.cur.line > stream.prev.line
+            self.stream.cur.value == "(" and self.stream.cur.line > self.stream.prev.line
             -- Match parentheses in a function call, but not in grouping. Types
             -- (`function(...)` and `(type)`) and function signatures (`function [name](...)`) are
             -- automatically excluded because they are parsed separately. This erronously recognizes
             -- `where (...)` as a call, but `where` is parsed by the `exp` parser, not this one.
-            and (anyOf(stream.prev.type, "alnum string") or anyOf(stream.prev.value, ") ] }"))
+            and (
+                anyOf(self.stream.prev.type, "alnum string")
+                or anyOf(self.stream.prev.value, ") ] }")
+            )
         ) then
             -- Teal idiosyncrasy
-            chopper.insert(stream.prev.last + 1, ";")
-            stream.nextToken()
+            self.chopper.insert(self.stream.prev.last + 1, ";")
+            self.stream.nextToken()
         else
-            stream.nextToken()
+            self.stream.nextToken()
         end
     end
 
@@ -197,56 +211,59 @@ end
 
 -- Parse a statement starting with `local` or `global`, before returning control to the shallow
 -- parser.
-function parsers.localGlobal(stream, chopper)
+function Transpiler:parseLocalGlobal()
     -- `global` is implicit in Lua.
-    if stream.cur.value == "global" then
-        chopper.cut(stream.cur.first, stream.next.first - 1)
+    if self.stream.cur.value == "global" then
+        self.chopper.cut(self.stream.cur.first, self.stream.next.first - 1)
     end
-    stream.nextToken()
+    self.stream.nextToken()
 
-    if stream.next.type == "alnum" and anyOf(stream.cur.value, "record interface enum type") then
+    if (
+        self.stream.next.type == "alnum"
+        and anyOf(self.stream.cur.value, "record interface enum type")
+    ) then
         -- Parse `local record _`, etc. as a type definition if `_` is alnum. This isn't always
         -- correct per the grammar, but it seems to be the same heuristic that Teal uses:
         -- https://github.com/teal-language/tl/issues/1132
-        parsers.typeDefinition(stream, chopper, true)
-    elseif stream.cur.value == "function" then
+        self:parseTypeDefinition(true)
+    elseif self.stream.cur.value == "function" then
         -- Let the shallow parser deal with this.
         return
-    elseif stream.cur.value == "macroexp" then
+    elseif self.stream.cur.value == "macroexp" then
         -- Change to a function and let the shallow parser deal with it accordingly. This doesn't
         -- need to be handled in the shallow parser alone because keyword `macroexp` is always
         -- preceeded by `local` or `global`.
-        stream.cur.value = "function"
-        chopper.cut(stream.cur.first, stream.cur.last, "function")
+        self.stream.cur.value = "function"
+        self.chopper.cut(self.stream.cur.first, self.stream.cur.last, "function")
         return
     else
         -- Variable definition. We have to parse this until the type because function types are
         -- syntactically indistinguishable from the start of a closure, but don't require an `end`,
         -- and trying to use the shallow parser on this breaks `end` detection.
         repeat
-            assert(stream.cur.type == "alnum", "invalid syntax in definition")
-            stream.nextToken()
+            assert(self.stream.cur.type == "alnum", "invalid syntax in definition")
+            self.stream.nextToken()
             -- Handle attributes: we need to remove `<total>` and annotate the closing angle bracket
             -- for the shallow parser.
-            if stream.tryConsume("<") then
-                local first = stream.prev.first
-                assert(stream.cur.type == "alnum", "expected identifier in attribute")
-                local attr = stream.cur.value
-                stream.nextToken()
-                assert(stream.tryConsume(">"), "invalid attribute syntax")
-                stream.prev.is_attribute = true
+            if self.stream.tryConsume("<") then
+                local first = self.stream.prev.first
+                assert(self.stream.cur.type == "alnum", "expected identifier in attribute")
+                local attr = self.stream.cur.value
+                self.stream.nextToken()
+                assert(self.stream.tryConsume(">"), "invalid attribute syntax")
+                self.stream.prev.is_attribute = true
                 if attr == "total" then
-                    chopper.cut(first, stream.prev.last)
+                    self.chopper.cut(first, self.stream.prev.last)
                 end
             end
-        until not stream.tryConsume(",")
+        until not self.stream.tryConsume(",")
 
-        if stream.tryConsume(":") then
-            local first = stream.prev.first
+        if self.stream.tryConsume(":") then
+            local first = self.stream.prev.first
             repeat
-                parsers.type(stream)
-            until not stream.tryConsume(",")
-            chopper.cut(first, stream.prev.last)
+                self:parseType()
+            until not self.stream.tryConsume(",")
+            self.chopper.cut(first, self.stream.prev.last)
         end
     end
 end
@@ -259,373 +276,380 @@ end
 -- - To allow reexports of nested types to evaluate without triggering `nil` dereference, e.g. in
 --   `return Type.Nested`.
 -- - To populate the `__is` method for the `is` operator.
-function parsers.typeDefinition(stream, chopper, allow_empty)
-    local first = stream.cur.first
-    local def_type = stream.cur.value
-    local name_token = stream.next
-    stream.nextToken()
-    stream.nextToken()
+function Transpiler:parseTypeDefinition(allow_empty)
+    local first = self.stream.cur.first
+    local def_type = self.stream.cur.value
+    local name_token = self.stream.next
+    self.stream.nextToken()
+    self.stream.nextToken()
 
-    parsers.maybeTypeArgs(stream)
+    self:maybeParseTypeArgs()
 
     if def_type == "type" then
-        if stream.tryConsume("=") then
+        if self.stream.tryConsume("=") then
             -- Remove `type` prefix.
-            chopper.cut(first, name_token.first - 1)
+            self.chopper.cut(first, name_token.first - 1)
         else
             assert(allow_empty, "expected = <newtype> after 'type _'")
-            chopper.cut(first, stream.prev.last)
+            self.chopper.cut(first, self.stream.prev.last)
             return
         end
     else
         -- Replace `record _` with `_ =` before parsing the rest of the definition.
-        chopper.cut(first, name_token.first - 1)
-        chopper.insert(name_token.last + 1, " =")
+        self.chopper.cut(first, name_token.first - 1)
+        self.chopper.insert(name_token.last + 1, " =")
     end
 
     if def_type == "enum" then
-        parsers.enumBody(stream, chopper)
+        self:parseEnumBody()
     elseif def_type == "type" then
         -- newtype
-        if anyOf(stream.cur.value, "record interface") then
-            chopper.cut(stream.cur.first, stream.next.first - 1)
-            stream.nextToken()
-            parsers.recordBody(stream, chopper)
-        elseif stream.tryConsume("enum") then
-            chopper.cut(stream.prev.first, stream.cur.first - 1)
-            parsers.enumBody(stream, chopper)
-        elseif stream.tryConsume("require") then
+        if anyOf(self.stream.cur.value, "record interface") then
+            self.chopper.cut(self.stream.cur.first, self.stream.next.first - 1)
+            self.stream.nextToken()
+            self:parseRecordBody()
+        elseif self.stream.tryConsume("enum") then
+            self.chopper.cut(self.stream.prev.first, self.stream.cur.first - 1)
+            self:parseEnumBody()
+        elseif self.stream.tryConsume("require") then
             -- Keep the `require` as-is, since it's already syntactically correct.
-            assert(stream.tryConsume("("), "expected ( after require in newtype")
-            parsers.shallow(stream, chopper, ")")
-            while stream.tryConsume(".") do
-                assert(stream.cur.type == "alnum", "expected identifier after .")
-                stream.nextToken()
+            assert(self.stream.tryConsume("("), "expected ( after require in newtype")
+            self:parseShallow(")")
+            while self.stream.tryConsume(".") do
+                assert(self.stream.cur.type == "alnum", "expected identifier after .")
+                self.stream.nextToken()
             end
         else
-            local first = stream.cur.first
-            local condition = parsers.type(stream)
+            local first = self.stream.cur.first
+            local condition = self:parseType()
             local def = "{ __is = function(self) return " .. condition:gsub("!", "self") .. " end }"
-            chopper.cut(first, stream.prev.last, def)
+            self.chopper.cut(first, self.stream.prev.last, def)
         end
     else
-        parsers.recordBody(stream, chopper)
+        self:parseRecordBody()
     end
 
-    chopper.insert(stream.prev.last + 1, ";")
+    self.chopper.insert(self.stream.prev.last + 1, ";")
 end
 
--- Parses an `enumbody`. If `chopper` is passed, replaces it with `{ ... }` describing the type as
--- documented in `parsers.typeDefinition`.
-function parsers.enumBody(stream, chopper)
-    local first = stream.cur.first
-    while stream.cur.type == "string" do
-        stream.nextToken()
+-- Parses an `enumbody` and replaces it with `{ ... }` describing the type as documented in
+-- `parseTypeDefinition`.
+function Transpiler:parseEnumBody()
+    local first = self.stream.cur.first
+    while self.stream.cur.type == "string" do
+        self.stream.nextToken()
     end
-    assert(stream.tryConsume("end"), "enum can only contain strings")
-    if chopper then
-        chopper.cut(first, stream.prev.last, '{ __is = function(self) return type(self) == "string" end }')
-    end
+    assert(self.stream.tryConsume("end"), "enum can only contain strings")
+    self.chopper.cut(
+        first,
+        self.stream.prev.last,
+        '{ __is = function(self) return type(self) == "string" end }'
+    )
 end
 
--- Parses a `recordbody`. If `chopper` is passed, replaces it with `{ ... }` describing the type as
--- documented in `parsers.typeDefinition`.
-function parsers.recordBody(stream, chopper)
-    local first = stream.cur.first
+-- Parses a `recordbody` and replaces it with `{ ... }` describing the type as documented in
+-- `parseTypeDefinition`.
+function Transpiler:parseRecordBody()
+    local first = self.stream.cur.first
 
-    parsers.maybeTypeArgs(stream)
+    self:maybeParseTypeArgs()
 
     -- Legacy syntax without `is`. Not documented in grammar, but used in the Teal compiler.
-    if stream.cur.value == "{" then
-        parsers.parenthesized(stream, "{", "}")
+    if self.stream.cur.value == "{" then
+        self:parseParenthesized("{", "}")
     end
 
     -- Teal does not consider `is` or `where` valid recordkeys, so there is no
-    -- `stream.next.value ~= ":"` check here.
-    if stream.tryConsume("is") then
+    -- `self.stream.next.value ~= ":"` check here.
+    if self.stream.tryConsume("is") then
         -- interfacelist
-        parsers.baseType(stream)
-        while stream.tryConsume(",") do
-            parsers.baseType(stream)
+        self:parseBaseType()
+        while self.stream.tryConsume(",") do
+            self:parseBaseType()
         end
     end
 
     -- Cut carefully so that the `where` expression stays intact.
-    if stream.tryConsume("where") then
-        if chopper then
-            chopper.cut(first, stream.prev.last, "{ __is = function(self) return ")
-        end
-        parsers.exp(stream, chopper)
-        if chopper then
-            chopper.insert(stream.prev.last + 1, " end; ")
-        end
+    if self.stream.tryConsume("where") then
+        self.chopper.cut(first, self.stream.prev.last, "{ __is = function(self) return ")
+        self:parseExp()
+        self.chopper.insert(self.stream.prev.last + 1, " end; ")
     else
-        if chopper then
-            chopper.cut(first, stream.prev.last, "{ ")
-        end
+        self.chopper.cut(first, self.stream.prev.last, "{ ")
     end
 
-    while not stream.tryConsume("end") do
+    while not self.stream.tryConsume("end") do
         -- recordentry
-        local first = stream.cur.first
+        local first = self.stream.cur.first
         local do_cut = true
         if (
             -- Ignore `userdata` when used as an identifier, e.g. in `userdata: type`.
-            stream.cur.value == "userdata" and stream.next.value ~= ":"
+            self.stream.cur.value == "userdata" and self.stream.next.value ~= ":"
         ) then
-            stream.nextToken()
-        elseif anyOf(stream.cur.value, "record interface enum type") and stream.next.type == "alnum" then
-            parsers.typeDefinition(stream, chopper)
+            self.stream.nextToken()
+        elseif (
+            anyOf(self.stream.cur.value, "record interface enum type")
+            and self.stream.next.type == "alnum"
+        ) then
+            self:parseTypeDefinition()
             do_cut = false
         else
-            if stream.next.value ~= ":" then
-                stream.tryConsume("metamethod")
+            if self.stream.next.value ~= ":" then
+                self.stream.tryConsume("metamethod")
             end
             -- recordkey
-            if stream.cur.value == "[" then
-                parsers.parenthesized(stream, "[", "]")
-            elseif stream.cur.type == "alnum" then
-                stream.nextToken()
+            if self.stream.cur.value == "[" then
+                self:parseParenthesized("[", "]")
+            elseif self.stream.cur.type == "alnum" then
+                self.stream.nextToken()
             else
                 error("invalid recordkey")
             end
-            assert(stream.tryConsume(":"), "expected : after recordkey in recordbody")
-            parsers.type(stream)
-            assert(not stream.tryConsume("="), "assignments in recordbody are not supported")
+            assert(self.stream.tryConsume(":"), "expected : after recordkey in recordbody")
+            self:parseType()
+            assert(not self.stream.tryConsume("="), "assignments in recordbody are not supported")
         end
-        if do_cut and chopper then
-            chopper.cut(first, stream.prev.last)
+        if do_cut then
+            self.chopper.cut(first, self.stream.prev.last)
         end
     end
 
-    if chopper then
-        chopper.cut(stream.prev.first, stream.prev.last, "}")
-    end
+    self.chopper.cut(self.stream.prev.first, self.stream.prev.last, "}")
 end
 
 -- Cut `as` casts.
-function parsers.as(stream, chopper)
-    local first = stream.cur.first
-    stream.nextToken()
-    if stream.cur.value == "(" then
+function Transpiler:parseAs()
+    local first = self.stream.cur.first
+    self.stream.nextToken()
+    if self.stream.cur.value == "(" then
         -- Teal supports parenthesized typelists after `as`, which `type` doesn't recognize.
-        parsers.parenthesized(stream, "(", ")")
+        self:parseParenthesized("(", ")")
     else
-        parsers.type(stream)
+        self:parseType()
     end
-    chopper.cut(first, stream.prev.last)
+    self.chopper.cut(first, self.stream.prev.last)
 end
 
 -- Lower `is` checks.
-function parsers.is(stream, chopper)
-    assert(stream.prev.type == "alnum", "'is' is only allowed after names")
-    local first = stream.prev.first
-    local name = stream.prev.value
-    stream.nextToken()
-    local condition = parsers.type(stream)
-    chopper.cut(first, stream.prev.last, "(" .. condition:gsub("!", name) .. ")")
+function Transpiler:parseIs()
+    assert(self.stream.prev.type == "alnum", "'is' is only allowed after names")
+    local first = self.stream.prev.first
+    local name = self.stream.prev.value
+    self.stream.nextToken()
+    local condition = self:parseType()
+    self.chopper.cut(first, self.stream.prev.last, "(" .. condition:gsub("!", name) .. ")")
 end
 
--- Parse a type, returning a condition similar to `parsers.baseType`.
-function parsers.type(stream)
-    if stream.tryConsume("(") then
-        local condition = parsers.type(stream)
-        assert(stream.tryConsume(")"), "expected ) in parenthesized type")
+-- Parse a type, returning a condition similar to `parsBaseType`.
+function Transpiler:parseType()
+    if self.stream.tryConsume("(") then
+        local condition = self:parseType(self.stream)
+        assert(self.stream.tryConsume(")"), "expected ) in parenthesized type")
         return condition
     end
-    local conditions = { parsers.baseType(stream) }
-    while stream.tryConsume("|") do
-        table.insert(conditions, parsers.baseType(stream))
+    local conditions = { self:parseBaseType() }
+    while self.stream.tryConsume("|") do
+        table.insert(conditions, self:parseBaseType())
     end
     return table.concat(conditions, " or ")
 end
 
 -- Parse a base type, returning a condition checking whether a value is of this type according to
 -- the logic of the `is` operator. `!` is substituted for the variable name that is being checked.
-function parsers.baseType(stream)
-    if anyOf(stream.cur.value, "string boolean nil number thread table") then
-        stream.nextToken()
-        return 'type(!) == "' .. stream.prev.value .. '"'
-    elseif stream.tryConsume("any") then
+function Transpiler:parseBaseType()
+    if anyOf(self.stream.cur.value, "string boolean nil number thread table") then
+        self.stream.nextToken()
+        return 'type(!) == "' .. self.stream.prev.value .. '"'
+    elseif self.stream.tryConsume("any") then
         -- Weird, but that's the way it's lowered.
         return 'type(!) == "table"'
-    elseif stream.tryConsume("integer") then
+    elseif self.stream.tryConsume("integer") then
         return 'math.type(!) == "integer"'
-    elseif stream.cur.value == "{" then
-        parsers.parenthesized(stream, "{", "}")
+    elseif self.stream.cur.value == "{" then
+        self:parseParenthesized("{", "}")
         return 'type(!) == "table"'
-    elseif stream.tryConsume("function") then
-        parsers.maybeTypeArgs(stream)
+    elseif self.stream.tryConsume("function") then
+        self:maybeParseTypeArgs()
         -- `function` or `function<...>` alone denotes an arbitrary function.
-        if stream.cur.value == "(" then
-            parsers.parenthesized(stream, "(", ")")
-            if stream.tryConsume(":") then
-                parsers.retList(stream)
+        if self.stream.cur.value == "(" then
+            self:parseParenthesized("(", ")")
+            if self.stream.tryConsume(":") then
+                self:parseRetList()
             end
         end
         return 'type(!) == "function"'
-    elseif stream.cur.type == "alnum" then
+    elseif self.stream.cur.type == "alnum" then
         -- nominal type
-        local first = stream.cur.first
-        stream.nextToken()
+        local first = self.stream.cur.first
+        self.stream.nextToken()
         -- Filter `.<alnum>` to avoid consuming `...` split into three dots.
-        while stream.next.type == "alnum" and stream.tryConsume(".") do
-            stream.nextToken()
+        while self.stream.next.type == "alnum" and self.stream.tryConsume(".") do
+            self.stream.nextToken()
         end
-        local last = stream.prev.last
-        parsers.maybeTypeArgs(stream)
-        return stream.code:sub(first, last) .. ".__is(!)"
+        local last = self.stream.prev.last
+        self:maybeParseTypeArgs()
+        return self.stream.code:sub(first, last) .. ".__is(!)"
     else
         error("invalid basetype")
     end
 end
 
 -- Parse `funcbody`, cutting out type annotations, stopping just before the block.
-function parsers.funcBodySignature(stream, chopper)
-    parsers.maybeTypeArgs(stream, chopper)
+function Transpiler:parseFuncBodySignature()
+    local first = self.stream.cur.first
+    self:maybeParseTypeArgs()
+    self.chopper.cut(first, self.stream.prev.last)
 
-    assert(stream.tryConsume("("), "expected ( in function definition")
-    while not stream.tryConsume(")") do
-        if stream.tryConsume(":") then
-            local first = stream.prev.first
-            parsers.type(stream)
-            chopper.cut(first, stream.prev.last)
-        elseif stream.tryConsume("?") then
-            chopper.cut(stream.prev.first, stream.prev.last)
+    assert(self.stream.tryConsume("("), "expected ( in function definition")
+    while not self.stream.tryConsume(")") do
+        if self.stream.tryConsume(":") then
+            local first = self.stream.prev.first
+            self:parseType()
+            self.chopper.cut(first, self.stream.prev.last)
+        elseif self.stream.tryConsume("?") then
+            self.chopper.cut(self.stream.prev.first, self.stream.prev.last)
         else
             -- Keep names and commas as is without wasting time parsing the exact grammar.
-            stream.nextToken()
+            self.stream.nextToken()
         end
     end
 
-    if stream.tryConsume(":") then
-        local first = stream.prev.first
-        parsers.retList(stream)
-        chopper.cut(first, stream.prev.last)
+    if self.stream.tryConsume(":") then
+        local first = self.stream.prev.first
+        self:parseRetList()
+        self.chopper.cut(first, self.stream.prev.last)
     end
 end
 
-function parsers.retList(stream)
-    if stream.cur.value == "(" then
-        parsers.parenthesized(stream, "(", ")")
+function Transpiler:parseRetList()
+    if self.stream.cur.value == "(" then
+        self:parseParenthesized("(", ")")
     else
-        parsers.type(stream)
-        while stream.tryConsume(",") do
-            parsers.type(stream)
+        self:parseType()
+        while self.stream.tryConsume(",") do
+            self:parseType()
         end
-        if stream.tryConsume(".") then
+        if self.stream.tryConsume(".") then
             -- ... split into three tokens
-            assert(stream.tryConsume("."), "expected ... in rettype")
-            assert(stream.tryConsume("."), "expected ... in rettype")
+            assert(self.stream.tryConsume("."), "expected ... in rettype")
+            assert(self.stream.tryConsume("."), "expected ... in rettype")
         end
     end
 end
 
 -- Parse an expression until the end. This function is not supposed to be invoked often: it's slow,
--- and most of the time `parsers.shallow` suffices. It should only be used when there's no other way
--- to figure out when to stop parsing, e.g. if there's no `end` or `then` after the expression.
-function parsers.exp(stream, chopper)
+-- and most of the time `parseShallow` suffices. It should only be used when there's no other way to
+-- figure out when to stop parsing, e.g. if there's no `end` or `then` after the expression.
+function Transpiler:parseExp()
     while true do
         -- Unary operators
-        while stream.tryConsume("-") or stream.tryConsume("not") or stream.tryConsume("#") or stream.tryConsume("~") do
+        while (
+            self.stream.tryConsume("-")
+            or self.stream.tryConsume("not")
+            or self.stream.tryConsume("#")
+            or self.stream.tryConsume("~")
+        ) do
         end
         -- Basic expression
-        if stream.cur.type == "string" then
-            stream.nextToken()
-        elseif stream.tryConsume(".") then
+        if self.stream.cur.type == "string" then
+            self.stream.nextToken()
+        elseif self.stream.tryConsume(".") then
             -- ... split into three tokens
-            assert(stream.tryConsume("."), "expected ... in expression context")
-            assert(stream.tryConsume("."), "expected ... in expression context")
-        elseif stream.tryConsume("function") then
-            parsers.funcBodySignature(stream, chopper)
-            parsers.shallow(stream, chopper, "end")
-        elseif stream.tryConsume("{") then
-            parsers.shallow(stream, chopper, "}")
+            assert(self.stream.tryConsume("."), "expected ... in expression context")
+            assert(self.stream.tryConsume("."), "expected ... in expression context")
+        elseif self.stream.tryConsume("function") then
+            self:parseFuncBodySignature()
+            self:parseShallow("end")
+        elseif self.stream.tryConsume("{") then
+            self:parseShallow("}")
         else
-            if stream.tryConsume("(") then
-                parsers.shallow(stream, chopper, ")")
-            elseif stream.cur.type == "alnum" then
-                stream.nextToken()
+            if self.stream.tryConsume("(") then
+                self:parseShallow(")")
+            elseif self.stream.cur.type == "alnum" then
+                self.stream.nextToken()
             else
                 error("invalid expression")
             end
             while true do
-                if stream.tryConsume("[") then
-                    parsers.shallow(stream, chopper, "]")
-                elseif stream.tryConsume(".") then
-                    assert(stream.cur.type == "alnum", "expected identifier after .")
-                    stream.nextToken()
-                elseif stream.tryConsume(":") then
-                    assert(stream.cur.type == "alnum", "expected identifier after :")
-                    stream.nextToken()
-                    parsers.args(stream, chopper)
-                elseif stream.cur.value == "(" and stream.cur.line > stream.prev.line then
+                if self.stream.tryConsume("[") then
+                    self:parseShallow("]")
+                elseif self.stream.tryConsume(".") then
+                    assert(self.stream.cur.type == "alnum", "expected identifier after .")
+                    self.stream.nextToken()
+                elseif self.stream.tryConsume(":") then
+                    assert(self.stream.cur.type == "alnum", "expected identifier after :")
+                    self.stream.nextToken()
+                    self:parseArgs()
+                elseif (
+                    self.stream.cur.value == "("
+                    and self.stream.cur.line > self.stream.prev.line
+                ) then
                     -- Teal idiosyncrasy
-                    chopper.insert(stream.prev.last + 1, ";")
+                    self.chopper.insert(self.stream.prev.last + 1, ";")
                     break
-                elseif anyOf(stream.cur.value, "( {") or stream.cur.type == "string" then
-                    parsers.args(stream, chopper)
+                elseif anyOf(self.stream.cur.value, "( {") or self.stream.cur.type == "string" then
+                    self:parseArgs()
                 else
                     break
                 end
             end
         end
         while true do
-            if stream.cur.value == "as" then
-                parsers.as(stream, chopper)
-            elseif stream.cur.value == "is" then
-                parsers.is(stream, chopper)
+            if self.stream.cur.value == "as" then
+                self:parseAs()
+            elseif self.stream.cur.value == "is" then
+                self:parseIs()
             else
                 break
             end
         end
         if (
-            stream.tryConsume("+")
-            or stream.tryConsume("-")
-            or stream.tryConsume("*")
-            or stream.tryConsume("^")
-            or stream.tryConsume("%")
-            or stream.tryConsume("&")
-            or stream.tryConsume("|")
-            or stream.tryConsume("and")
-            or stream.tryConsume("or")
+            self.stream.tryConsume("+")
+            or self.stream.tryConsume("-")
+            or self.stream.tryConsume("*")
+            or self.stream.tryConsume("^")
+            or self.stream.tryConsume("%")
+            or self.stream.tryConsume("&")
+            or self.stream.tryConsume("|")
+            or self.stream.tryConsume("and")
+            or self.stream.tryConsume("or")
         ) then
             -- pass
-        elseif stream.tryConsume("/") then
-            stream.tryConsume("/") -- / or //
-        elseif stream.tryConsume(">") then
-            local _ = stream.tryConsume(">") or stream.tryConsume("=") -- >, >>, or >=
-        elseif stream.tryConsume("<") then
-            local _ = stream.tryConsume("<") or stream.tryConsume("=") -- <, <<, or <=
-        elseif stream.tryConsume(".") then
-            assert(stream.tryConsume("."), "unexpected . in expression")
-        elseif stream.tryConsume("=") then
-            assert(stream.tryConsume("="), "unexpected = in expression")
-        elseif stream.tryConsume("~") then
-            stream.tryConsume("=") -- ~ or ~=
+        elseif self.stream.tryConsume("/") then
+            self.stream.tryConsume("/") -- / or //
+        elseif self.stream.tryConsume(">") then
+            local _ = self.stream.tryConsume(">") or self.stream.tryConsume("=") -- >, >>, or >=
+        elseif self.stream.tryConsume("<") then
+            local _ = self.stream.tryConsume("<") or self.stream.tryConsume("=") -- <, <<, or <=
+        elseif self.stream.tryConsume(".") then
+            assert(self.stream.tryConsume("."), "unexpected . in expression")
+        elseif self.stream.tryConsume("=") then
+            assert(self.stream.tryConsume("="), "unexpected = in expression")
+        elseif self.stream.tryConsume("~") then
+            self.stream.tryConsume("=") -- ~ or ~=
         else
             break
         end
     end
 end
 
-function parsers.args(stream, chopper)
-    if stream.tryConsume("(") then
-        parsers.shallow(stream, chopper, ")")
-    elseif stream.tryConsume("{") then
-        parsers.shallow(stream, chopper, "}")
-    elseif stream.cur.type == "string" then
-        stream.nextToken()
+function Transpiler:parseArgs()
+    if self.stream.tryConsume("(") then
+        self:parseShallow(")")
+    elseif self.stream.tryConsume("{") then
+        self:parseShallow("}")
+    elseif self.stream.cur.type == "string" then
+        self.stream.nextToken()
     else
         error("invalid function call syntax")
     end
 end
 
-function parsers.parenthesized(stream, open, close)
+function Transpiler:parseParenthesized(open, close)
     local nesting = 0
-    while stream.cur.type ~= "eof" do
-        local value = stream.cur.value
-        stream.nextToken()
+    while self.stream.cur.type ~= "eof" do
+        local value = self.stream.cur.value
+        self.stream.nextToken()
         if value == open then
             nesting = nesting + 1
         elseif value == close then
@@ -638,22 +662,14 @@ function parsers.parenthesized(stream, open, close)
     assert("eof before " .. close)
 end
 
--- Tries to parse `<...>` at the given location. If a chopper is passed, removes the matched part.
-function parsers.maybeTypeArgs(stream, chopper)
-    if stream.cur.value ~= "<" then
-        return
-    end
-    local first = stream.cur.first
-    parsers.parenthesized(stream, "<", ">")
-    if chopper then
-        chopper.cut(first, stream.prev.last)
+-- Tries to parse `<...>` at the given location.
+function Transpiler:maybeParseTypeArgs()
+    if self.stream.cur.value == "<" then
+        self:parseParenthesized("<", ">")
     end
 end
 
 local f = io.open(arg[1], "rb")
 local content = f:read("*a")
 f:close()
-
-local chopper = chopping.makeChopper(content)
-parsers.shallow(tokenstream.makeTokenStream(content), chopper, "eof")
-print(chopper.finish())
+print(transpile(content))
