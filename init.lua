@@ -66,9 +66,9 @@ function Transpiler:parseShallow(until_what)
         if self.stream.cur.value == "local" then
             self:parseLocalGlobal()
         elseif self.stream.cur.value == "global" then
-            -- Since `global` is not a keyword, some occurrences of `global` may be identifiers. In
-            -- fact, since `global = 1` is parsed as an assignment, it's not even guaranteed to be
-            -- a keyword if it's at the beginning of a statement.
+            -- Since `global` is not a keyword in Teal, some occurrences of `global` may be
+            -- identifiers. In fact, since `global = 1` is parsed as an assignment, it's not even
+            -- guaranteed to be a keyword if it's at the beginning of a statement.
             local is_keyword
             if self.stream.next.type ~= "alnum" then
                 is_keyword = false
@@ -216,7 +216,7 @@ end
 -- Parse a statement starting with `local` or `global`, before returning control to the shallow
 -- parser.
 function Transpiler:parseLocalGlobal()
-    -- `global` is implicit in Lua.
+    -- `global` is implicit in Lua, and with Teal semantics it's unsound to keep it even in Lua 5.5.
     if self.stream.cur.value == "global" then
         self.chopper.cut(self.stream.cur.first, self.stream.next.first - 1)
     end
