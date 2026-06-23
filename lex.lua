@@ -26,10 +26,6 @@ local function lex(code)
     end
     handlers[0x5f] = handleAlnum
 
-    handlers[0x0a] = function(first)
-        return "newline", first
-    end
-
     local function handleString(first)
         -- Skip until matching punctuation that is not preceded by an odd number of backslashes.
         -- This pattern is likely worst-case quadratic, but this shouldn't trigger on realistic
@@ -65,7 +61,7 @@ local function lex(code)
     end
 
     return function()
-        local first = code:find("[^ \r\t\v\f]", cur_pos)
+        local first = code:find("%S", cur_pos)
         if not first then
             return nil
         end

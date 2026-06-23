@@ -1,7 +1,7 @@
 local lex = require "lex"
 
 local function makeTokenStream(code)
-    local e = { value = "", type = "sof", first = 1, last = 1, line = 1 }
+    local e = { value = "", type = "sof", first = 1, last = 1 }
     local stream = {
         prev3 = e,
         prev2 = e,
@@ -11,16 +11,12 @@ local function makeTokenStream(code)
         next2 = e,
     }
     local lexer = lex.lex(code)
-    local line = 1
 
     function stream.nextToken()
         local value, type, first, last
         repeat
             value, type, first, last = lexer()
-            if type == "newline" then
-                line = line + 1
-            end
-        until type ~= "comment" and type ~= "newline"
+        until type ~= "comment"
         local token
         if value then
             token = {
@@ -28,7 +24,6 @@ local function makeTokenStream(code)
                 type = type,
                 first = first,
                 last = last,
-                line = line,
             }
         else
             token = {
@@ -36,7 +31,6 @@ local function makeTokenStream(code)
                 type = "eof",
                 first = #code + 1,
                 last = #code + 1,
-                line = line,
             }
         end
 
@@ -55,6 +49,10 @@ local function makeTokenStream(code)
         else
             return false
         end
+    end
+
+    function stream.curPreceededByNewline()
+        return code:sub(stream.prev.last + 1, stream.cur.first - 1):find("\n") ~= nil
     end
 
     -- Populate up to `cur`.
