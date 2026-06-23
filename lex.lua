@@ -37,7 +37,7 @@ local function lex(code)
                         _, last = code:find(patterns.long_string, last + 1)
                     else
                         -- Short comment, skip until EOL.
-                        last = code:find("\n", last + 1)
+                        last = code:find("\n", last + 1) or #code
                     end
                 elseif key == "short_string" then
                     -- Skip until matching punctuation that is not preceded by an odd number of
