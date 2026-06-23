@@ -2,59 +2,74 @@
 -- non-whitespace characters as punctuation per character.
 local function lex(code)
     local cur_pos = 1
+    local handlers = {}
+
+    local function handleDefault(first)
+        return "punct", first
+    end
+    for byte = 0, 0xff do
+        handlers[byte] = handleDefault
+    end
+
+    local function handleAlnum(first)
+        local _, last = code:find("[%a%d_]+", first)
+        return "alnum", last
+    end
+    for byte = 0x30, 0x39 do
+        handlers[byte] = handleAlnum
+    end
+    for byte = 0x41, 0x5a do
+        handlers[byte] = handleAlnum
+    end
+    for byte = 0x61, 0x7a do
+        handlers[byte] = handleAlnum
+    end
+    handlers[0x5f] = handleAlnum
+
+    handlers[0x0a] = function(first)
+        return "newline", first
+    end
+
+    local function handleString(first)
+        -- Skip until matching punctuation that is not preceded by an odd number of backslashes.
+        -- This pattern is likely worst-case quadratic, but this shouldn't trigger on realistic
+        -- strings.
+        local punct = code:sub(first, first)
+        local _, last = code:find("[^\\](\\*)%1" .. punct, first)
+        return "string", last
+    end
+    handlers[0x22] = handleString
+    handlers[0x27] = handleString
+
+    handlers[0x2d] = function(first)
+        if code:byte(first + 1) ~= 0x2d then
+            return "punct", first
+        end
+        local _, last
+        if code:sub(first + 2, first + 2) == "[" then
+            -- Long comment like `--[[...]]`, reuse the long string pattern.
+            _, last = code:find("%[(=*)%[.-%]%1%]", first + 2)
+        else
+            -- Short comment, skip until EOL.
+            last = code:find("\n", first + 2) or #code
+        end
+        return "comment", last
+    end
+
+    handlers[0x5b] = function(first)
+        if code:byte(first + 1) ~= 0x5b and code:byte(first + 1) ~= 0x3d then
+            return "punct", first
+        end
+        local _, last = code:find("%[(=*)%[.-%]%1%]", first)
+        return "string", last
+    end
 
     return function()
-        if not cur_pos then
+        local first = code:find("[^ \r\t\v\f]", cur_pos)
+        if not first then
             return nil
         end
-
-        -- Skip whitespace, except for `\n`, which is used to track line numbers.
-        cur_pos = code:find("[^ \r\t\v\f]", cur_pos)
-        if not cur_pos then
-            return nil
-        end
-
-        local first = cur_pos
-        local key
-        local _, last
-
-        local byte = code:byte(cur_pos)
-        local next_byte = code:byte(cur_pos + 1)
-        if (
-            (0x30 <= byte and byte <= 0x39)
-            or (0x41 <= byte and byte <= 0x5a)
-            or (0x61 <= byte and byte <= 0x7a)
-            or byte == 0x5f
-        ) then
-            key = "alnum"
-            _, last = code:find("[%a%d_]+", cur_pos)
-        elseif byte == 0x0a then
-            key = "newline"
-            last = cur_pos
-        elseif byte == 0x22 or byte == 0x27 then
-            key = "string"
-            -- Skip until matching punctuation that is not preceded by an odd number of backslashes.
-            -- This pattern is likely worst-case quadratic, but this shouldn't trigger on realistic
-            -- strings.
-            local punct = code:sub(cur_pos, cur_pos)
-            _, last = code:find("[^\\](\\*)%1" .. punct, cur_pos)
-        elseif byte == 0x2d and next_byte == 0x2d then
-            key = "comment"
-            if code:sub(cur_pos + 2, cur_pos + 2) == "[" then
-                -- Long comment like `--[[...]]`, reuse the long string pattern.
-                _, last = code:find("%[(=*)%[.-%]%1%]", cur_pos + 2)
-            else
-                -- Short comment, skip until EOL.
-                last = code:find("\n", cur_pos + 2) or #code
-            end
-        elseif byte == 0x5b and (next_byte == 0x5b or next_byte == 0x3d) then
-            key = "string"
-            _, last = code:find("%[(=*)%[.-%]%1%]", cur_pos)
-        else
-            key = "punct"
-            last = cur_pos
-        end
-
+        local key, last = handlers[code:byte(first)](first)
         cur_pos = last + 1
         return code:sub(first, last), key, first, last
     end
