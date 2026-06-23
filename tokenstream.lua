@@ -21,9 +21,6 @@ local function makeTokenStream(code)
                 line = line + 1
             end
         until type ~= "comment" and type ~= "newline"
-        if type == "short_string" or type == "long_string" then
-            type = "string"
-        end
         local token
         if value then
             token = {

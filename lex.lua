@@ -1,13 +1,6 @@
 -- Simple lexing: extract identifiers/numbers, comments, and strings, and treat the remaining
 -- non-whitespace characters as punctuation per character.
 local function lex(code)
-    local patterns = {
-        alnum = "[%a%d_]+",
-        comment = "%-%-",
-        short_string = "[\"']",
-        long_string = "%[(=*)%[.-%]%1%]",
-    }
-
     local cur_pos = 1
 
     return function()
@@ -22,45 +15,48 @@ local function lex(code)
         end
 
         local first = cur_pos
+        local key
+        local _, last
 
-        -- See if any pattern matches this position.
-        for key, pattern in pairs(patterns) do
-            local _, last = code:find("^" .. pattern, cur_pos)
-            if last then
-                -- Find the end of this token.
-                if key == "alnum" or key == "long_string" then
-                    -- Already parsed in full by the pattern.
-                elseif key == "comment" then
-                    if code:sub(last + 1, last + 1) == "[" then
-                        -- Long comment like `--[[...]]`, reuse the long string pattern.
-                        local _
-                        _, last = code:find(patterns.long_string, last + 1)
-                    else
-                        -- Short comment, skip until EOL.
-                        last = code:find("\n", last + 1) or #code
-                    end
-                elseif key == "short_string" then
-                    -- Skip until matching punctuation that is not preceded by an odd number of
-                    -- backslashes. This pattern is likely worst-case quadratic, but this shouldn't
-                    -- trigger on realistic strings.
-                    local punct = code:sub(cur_pos, cur_pos)
-                    local _
-                    _, last = code:find("[^\\](\\*)%1" .. punct, cur_pos)
-                end
-
-                cur_pos = last + 1
-                return code:sub(first, last), key, first, last
+        local byte = code:byte(cur_pos)
+        local next_byte = code:byte(cur_pos + 1)
+        if (
+            (0x30 <= byte and byte <= 0x39)
+            or (0x41 <= byte and byte <= 0x5a)
+            or (0x61 <= byte and byte <= 0x7a)
+            or byte == 0x5f
+        ) then
+            key = "alnum"
+            _, last = code:find("[%a%d_]+", cur_pos)
+        elseif byte == 0x0a then
+            key = "newline"
+            last = cur_pos
+        elseif byte == 0x22 or byte == 0x27 then
+            key = "string"
+            -- Skip until matching punctuation that is not preceded by an odd number of backslashes.
+            -- This pattern is likely worst-case quadratic, but this shouldn't trigger on realistic
+            -- strings.
+            local punct = code:sub(cur_pos, cur_pos)
+            _, last = code:find("[^\\](\\*)%1" .. punct, cur_pos)
+        elseif byte == 0x2d and next_byte == 0x2d then
+            key = "comment"
+            if code:sub(cur_pos + 2, cur_pos + 2) == "[" then
+                -- Long comment like `--[[...]]`, reuse the long string pattern.
+                _, last = code:find("%[(=*)%[.-%]%1%]", cur_pos + 2)
+            else
+                -- Short comment, skip until EOL.
+                last = code:find("\n", cur_pos + 2) or #code
             end
+        elseif byte == 0x5b and (next_byte == 0x5b or next_byte == 0x3d) then
+            key = "string"
+            _, last = code:find("%[(=*)%[.-%]%1%]", cur_pos)
+        else
+            key = "punct"
+            last = cur_pos
         end
 
-        -- Not a known token, assume punctuation.
-        local value = code:sub(cur_pos, cur_pos)
-        cur_pos = cur_pos + 1
-        if value == "\n" then
-            return "", "newline", first, first
-        else
-            return value, "punct", first, first
-        end
+        cur_pos = last + 1
+        return code:sub(first, last), key, first, last
     end
 end
 
