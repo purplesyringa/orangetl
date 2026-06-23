@@ -1,16 +1,19 @@
 local lex = require "lex"
 
 local function makeTokenStream(code)
-    local e = { value = "", type = "sof", first = 1, last = 1 }
-    local stream = {
-        prev3 = e,
-        prev2 = e,
-        prev = e,
-        cur = e,
-        next = e,
-        next2 = e,
-    }
     local lexer = lex.lex(code)
+
+    local sof = { value = "", type = "sof", first = 1, last = 1 }
+    local eof = { value = "", type = "eof", first = #code + 1, last = #code + 1 }
+
+    local stream = {
+        prev3 = sof,
+        prev2 = sof,
+        prev = sof,
+        cur = sof,
+        next = sof,
+        next2 = sof,
+    }
 
     function stream.nextToken()
         local value, type, first, last
@@ -26,12 +29,7 @@ local function makeTokenStream(code)
                 last = last,
             }
         else
-            token = {
-                value = "",
-                type = "eof",
-                first = #code + 1,
-                last = #code + 1,
-            }
+            token = eof
         end
 
         stream.prev3 = stream.prev2
