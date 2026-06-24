@@ -207,10 +207,21 @@ function Transpiler:parseShallow(until_what)
             and self.stream.isCurPreceededByNewline()
             -- Match parentheses in a function call, but not in grouping. Types
             -- (`function(...)` and `(type)`) and function signatures (`function [name](...)`) are
-            -- automatically excluded because they are parsed separately. This erronously recognizes
-            -- `where (...)` as a call, but `where` is parsed by the `exp` parser, not this one.
+            -- automatically excluded because they are parsed separately.
             and (
-                anyOf(self.stream.prev.type, "alnum string")
+                (
+                    self.stream.prev.type == "alnum"
+                    -- Exclude grouping after operators and statements, where expressions are
+                    -- expected. This erronously recognizes `where (...)` as a call, but `where` is
+                    -- parsed by the `exp` parser, not this one. It also recognizes
+                    -- `goto label (...)` as a call, but inserting `;` before statements is fine --
+                    -- it's expressions we have to worry about.
+                    and not anyOf(
+                        self.stream.prev.value,
+                        "and elseif end for if in not or repeat return then until while"
+                    )
+                )
+                or self.stream.prev.type == "string"
                 or anyOf(self.stream.prev.value, ") ] }")
             )
         then
