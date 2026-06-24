@@ -214,11 +214,13 @@ function Transpiler:parseShallow(until_what)
                     -- Exclude grouping after operators and statements, where expressions are
                     -- expected. This erronously recognizes `where (...)` as a call, but `where` is
                     -- parsed by the `exp` parser, not this one. It also recognizes
-                    -- `goto label (...)` as a call, but inserting `;` before statements is fine --
-                    -- it's expressions we have to worry about.
+                    -- `goto label (...)` as a call, but inserting `;` between statements is fine --
+                    -- it's expressions we have to worry about. Note that this list includes `do`
+                    -- and `else`, since Lua 5.1 doesn't allow `;` at the beginning of blocks, only
+                    -- after statements.
                     and not anyOf(
                         self.stream.prev.value,
-                        "and elseif end for if in not or repeat return then until while"
+                        "and do else elseif end for if in not or repeat return then until while"
                     )
                 )
                 or self.stream.prev.type == "string"
