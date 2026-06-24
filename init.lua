@@ -225,21 +225,26 @@ function Transpiler:parseLocalGlobal()
 
     if (
         self.stream.next.type == "alnum"
-        and anyOf(self.stream.cur.value, "record interface enum type")
+        and anyOf(self.stream.cur.value, "record interface enum type macroexp")
+        -- Separate `local record <ident>` (type definition) from `local record <keyword>` (empty
+        -- `local` definition, followed by another block).
+        -- See also: https://github.com/teal-language/tl/issues/1132
+        and not anyOf(self.stream.next.value, "and break do else elseif end false for function goto if in local nil not or repeat return then true until while")
     ) then
-        -- Parse `local record _`, etc. as a type definition if `_` is alnum. This isn't always
-        -- correct per the grammar, but it seems to be the same heuristic that Teal uses:
-        -- https://github.com/teal-language/tl/issues/1132
-        self:parseTypeDefinition(true)
+        if self.stream.cur.value == "macroexp" then
+            -- Change to a function and let the shallow parser deal with it accordingly. This
+            -- doesn't need to be handled in the shallow parser alone because keyword `macroexp` is
+            -- always preceeded by `local` or `global`.
+            self.stream.cur.value = "function"
+            self.chopper.cut(self.stream.cur.first, self.stream.cur.last, "function")
+        else
+            -- Parse `local record _`, etc. as a type definition if `_` is alnum. This isn't always
+            -- correct per the grammar, but it seems to be the same heuristic that Teal uses:
+            -- https://github.com/teal-language/tl/issues/1132
+            self:parseTypeDefinition(true)
+        end
     elseif self.stream.cur.value == "function" then
         -- Let the shallow parser deal with this.
-        return
-    elseif self.stream.cur.value == "macroexp" then
-        -- Change to a function and let the shallow parser deal with it accordingly. This doesn't
-        -- need to be handled in the shallow parser alone because keyword `macroexp` is always
-        -- preceeded by `local` or `global`.
-        self.stream.cur.value = "function"
-        self.chopper.cut(self.stream.cur.first, self.stream.cur.last, "function")
         return
     else
         -- Variable definition. We have to parse this until the type because function types are
