@@ -1,10 +1,10 @@
-local argparse = require "argparse"
-local transpiler = require "orange.transpiler"
+local argparse = require("argparse")
+local transpiler = require("orange.transpiler")
 
 local parser = argparse("orange", "A fast Teal-to-Lua transpiler.")
 parser:argument("file", "Input file."):target("input")
 parser:option("-o", "Output file."):argname("<filename>"):target("output")
-parser:option("-l", "Parse code as Lua or Teal."):target("language"):choices { "lua", "teal" }
+parser:option("-l", "Parse code as Lua or Teal."):target("language"):choices({ "lua", "teal" })
 parser:flag("--strip-attributes", "Strip attributes (for compatibility with Lua < 5.4).")
 local args = parser:parse()
 

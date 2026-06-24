@@ -1,5 +1,5 @@
-local chopping = require "orange.chopping"
-local tokenstream = require "orange.tokenstream"
+local chopping = require("orange.chopping")
+local tokenstream = require("orange.tokenstream")
 
 local function anyOf(s, pattern)
     for t in pattern:gmatch("[^%s]+") do
@@ -72,10 +72,13 @@ function Transpiler:parseShallow(until_what)
             local is_keyword
             if self.stream.next.type ~= "alnum" then
                 is_keyword = false
-            elseif (
+            elseif
                 -- Does this position not accept a statement?
                 -- An expression (or block end) is expected.
-                anyOf(self.stream.prev.value, "if elseif in while until = [ ( { return , + - * / ^ % & ~ | < # and or not")
+                anyOf(
+                    self.stream.prev.value,
+                    "if elseif in while until = [ ( { return , + - * / ^ % & ~ | < # and or not"
+                )
                 or self.stream.prev.value == ">" and not self.stream.prev.is_attribute
                 -- An identifier is expected. This should also include `local _` and
                 -- `local record _`, etc., but we use a separate parser for that.
@@ -84,7 +87,7 @@ function Transpiler:parseShallow(until_what)
                 or self.stream.prev.value == ":" and self.stream.prev2.value ~= ":"
                 -- Followed by a binary operator.
                 or anyOf(self.stream.next.value, "and or")
-            ) then
+            then
                 is_keyword = false
             elseif anyOf(self.stream.next.value, "as is") then
                 if anyOf(self.stream.next2.value, "< , : =") then
@@ -119,12 +122,12 @@ function Transpiler:parseShallow(until_what)
             elseif self.stream.prev.type == "punct" then
                 if anyOf(self.stream.prev.value, ") ] }") then
                     is_keyword = true
-                elseif (
+                elseif
                     -- `...`, split into three tokens.
                     self.stream.prev.value == "."
                     and self.stream.prev2.value == "."
                     and self.stream.prev3.value == "."
-                ) then
+                then
                     is_keyword = true
                 else
                     -- An expression, statement, or identifier is expected.
@@ -134,11 +137,14 @@ function Transpiler:parseShallow(until_what)
                 is_keyword = false
             else
                 -- alnum
-                if (
+                if
                     -- An identifier, statement, or expression is expected. This should also include
                     -- `local _` and `local record _`, etc., but we use a separate parser for that.
-                    anyOf(self.stream.prev.value, "goto function for break do while repeat until if then elseif else in return")
-                ) then
+                    anyOf(
+                        self.stream.prev.value,
+                        "goto function for break do while repeat until if then elseif else in return"
+                    )
+                then
                     is_keyword = false
                 elseif self.stream.prev.value == "end" then
                     -- Depends on whether `end` corresponds to a function expression.
@@ -180,21 +186,22 @@ function Transpiler:parseShallow(until_what)
                 return
             end
             self.stream.cur.is_function_expr = table.remove(nesting_is_function_expr)
-        elseif (
+        elseif
             -- Recognize `field: type =` in tables, ignoring `:` in method calls and labels.
             self.stream.cur.value == ":"
             and self.stream.prev.value ~= ":"
             and self.stream.next.value ~= ":"
             and not (
-                self.stream.next.type == "alnum" and self.stream.next.value ~= "function"
+                self.stream.next.type == "alnum"
+                and self.stream.next.value ~= "function"
                 and (self.stream.next2.type == "string" or anyOf(self.stream.next2.value, "( {"))
             )
-        ) then
+        then
             local first = self.stream.cur.first
             self.stream.nextToken()
             self:parseType()
             self.chopper.cut(first, self.stream.prev.last)
-        elseif (
+        elseif
             self.stream.cur.value == "("
             and not self.opts.lua_quirks
             and self.stream.isCurPreceededByNewline()
@@ -206,7 +213,7 @@ function Transpiler:parseShallow(until_what)
                 anyOf(self.stream.prev.type, "alnum string")
                 or anyOf(self.stream.prev.value, ") ] }")
             )
-        ) then
+        then
             -- Teal idiosyncrasy
             self.chopper.insert(self.stream.prev.last + 1, ";")
             self.stream.nextToken()
@@ -227,14 +234,17 @@ function Transpiler:parseLocalGlobal()
     end
     self.stream.nextToken()
 
-    if (
+    if
         self.stream.next.type == "alnum"
         and anyOf(self.stream.cur.value, "record interface enum type macroexp")
         -- Separate `local record <ident>` (type definition) from `local record <keyword>` (empty
         -- `local` definition, followed by another block).
         -- See also: https://github.com/teal-language/tl/issues/1132
-        and not anyOf(self.stream.next.value, "and break do else elseif end false for function goto if in local nil not or repeat return then true until while")
-    ) then
+        and not anyOf(
+            self.stream.next.value,
+            "and break do else elseif end false for function goto if in local nil not or repeat return then true until while"
+        )
+    then
         if self.stream.cur.value == "macroexp" then
             -- Change to a function and let the shallow parser deal with it accordingly. This
             -- doesn't need to be handled in the shallow parser alone because keyword `macroexp` is
@@ -268,7 +278,10 @@ function Transpiler:parseLocalGlobal()
                 self.stream.prev.is_attribute = true
                 if self.opts.strip_attributes then
                     -- Stripping `<close>` affects semantics.
-                    assert(attr == "const" or attr == "total", "cannot strip attribute '" .. attr .. "'")
+                    assert(
+                        attr == "const" or attr == "total",
+                        "cannot strip attribute '" .. attr .. "'"
+                    )
                 end
                 if self.opts.strip_attributes or attr == "total" then
                     self.chopper.cut(first, self.stream.prev.last)
@@ -401,15 +414,15 @@ function Transpiler:parseRecordBody()
         -- recordentry
         local first = self.stream.cur.first
         local do_cut = true
-        if (
+        if
             -- Ignore `userdata` when used as an identifier, e.g. in `userdata: type`.
             self.stream.cur.value == "userdata" and self.stream.next.value ~= ":"
-        ) then
+        then
             self.stream.nextToken()
-        elseif (
+        elseif
             anyOf(self.stream.cur.value, "record interface enum type")
             and self.stream.next.type == "alnum"
-        ) then
+        then
             self:parseTypeDefinition()
             do_cut = false
         else
@@ -564,12 +577,12 @@ end
 function Transpiler:parseExp()
     while true do
         -- Unary operators
-        while (
+        while
             self.stream.tryConsume("-")
             or self.stream.tryConsume("not")
             or self.stream.tryConsume("#")
             or self.stream.tryConsume("~")
-        ) do
+        do
         end
         -- Basic expression
         if self.stream.cur.type == "string" then
@@ -601,11 +614,11 @@ function Transpiler:parseExp()
                     assert(self.stream.cur.type == "alnum", "expected identifier after :")
                     self.stream.nextToken()
                     self:parseArgs()
-                elseif (
+                elseif
                     self.stream.cur.value == "("
                     and not self.opts.lua_quirks
                     and self.stream.isCurPreceededByNewline()
-                ) then
+                then
                     -- Teal idiosyncrasy
                     self.chopper.insert(self.stream.prev.last + 1, ";")
                     break
@@ -625,7 +638,7 @@ function Transpiler:parseExp()
                 break
             end
         end
-        if (
+        if
             self.stream.tryConsume("+")
             or self.stream.tryConsume("-")
             or self.stream.tryConsume("*")
@@ -635,7 +648,7 @@ function Transpiler:parseExp()
             or self.stream.tryConsume("|")
             or self.stream.tryConsume("and")
             or self.stream.tryConsume("or")
-        ) then
+        then
             -- pass
         elseif self.stream.tryConsume("/") then
             self.stream.tryConsume("/") -- / or //
