@@ -25,6 +25,16 @@ Transpile a file via CLI:
 $ orangetl script.tl -o script.lua
 ```
 
+---
+
+Register a searcher for `.tl` files (reuses `package.path`, replacing `.lua` with `.tl`):
+
+```lua
+table.insert(package.searchers or package.loaders, 2, require "orangetl".searcher)
+```
+
+---
+
 Transpile a file via API:
 
 ```lua
