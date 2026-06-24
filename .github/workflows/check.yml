@@ -1,0 +1,35 @@
+name: check
+
+on: [push]
+
+jobs:
+  check:
+    strategy:
+      matrix:
+        luaVersion: ["5.1", "5.5", "luajit"]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@master
+    - name: Install Lua
+      uses: leafo/gh-actions-lua@v13
+      with:
+        luaVersion: ${{ matrix.luaVersion }}
+    - name: Install luarocks
+      uses: leafo/gh-actions-luarocks@v6
+    - name: Build
+      run: luarocks make
+    # Avoid installing luacheck and StyLua via luarocks, since they don't support all Lua versions:
+    # luacheck doesn't support Lua 5.5 and StyLua doesn't support Lua 5.1.
+    - name: Run luacheck
+      uses: lunarmodules/luacheck@v1
+      # We need to override the default scan path (`.`) since the luarocks action installs it at
+      # `./.luarocks`.
+      with:
+        args: bin lua
+    - name: Run StyLua
+      uses: JohnnyMorganz/stylua-action@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        version: v2.5.2
+        args: --check bin lua
