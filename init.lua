@@ -166,7 +166,8 @@ function Transpiler:parseShallow(until_what)
                     assert(self.stream.cur.type == "alnum", "expected identifier after .")
                     self.stream.nextToken()
                 end
-                if self.stream.tryConsume(":") then
+                -- Return type, not a label definition.
+                if self.stream.next.value ~= ":" and self.stream.tryConsume(":") then
                     assert(self.stream.cur.type == "alnum", "expected identifier after :")
                     self.stream.nextToken()
                 end
@@ -180,8 +181,11 @@ function Transpiler:parseShallow(until_what)
             end
             self.stream.cur.is_function_expr = table.remove(nesting_is_function_expr)
         elseif (
-            -- Recognize `field: type =` in table constructor, ignoring `:` in method calls.
-            self.stream.cur.value == ":" and not (
+            -- Recognize `field: type =` in tables, ignoring `:` in method calls and labels.
+            self.stream.cur.value == ":"
+            and self.stream.prev.value ~= ":"
+            and self.stream.next.value ~= ":"
+            and not (
                 self.stream.next.type == "alnum" and self.stream.next.value ~= "function"
                 and (self.stream.next2.type == "string" or anyOf(self.stream.next2.value, "( {"))
             )
@@ -272,7 +276,8 @@ function Transpiler:parseLocalGlobal()
             end
         until not self.stream.tryConsume(",")
 
-        if self.stream.tryConsume(":") then
+        -- Type, not a label definition.
+        if self.stream.next.value ~= ":" and self.stream.tryConsume(":") then
             local first = self.stream.prev.first
             repeat
                 self:parseType()
@@ -487,7 +492,8 @@ function Transpiler:parseBaseType()
         -- `function` or `function<...>` alone denotes an arbitrary function.
         if self.stream.cur.value == "(" then
             self:parseParenthesized("(", ")")
-            if self.stream.tryConsume(":") then
+            -- Type, not a label definition.
+            if self.stream.next.value ~= ":" and self.stream.tryConsume(":") then
                 self:parseRetList()
             end
         end
@@ -528,7 +534,8 @@ function Transpiler:parseFuncBodySignature()
         end
     end
 
-    if self.stream.tryConsume(":") then
+    -- Type, not a label definition.
+    if self.stream.next.value ~= ":" and self.stream.tryConsume(":") then
         local first = self.stream.prev.first
         self:parseRetList()
         self.chopper.cut(first, self.stream.prev.last)
@@ -590,7 +597,7 @@ function Transpiler:parseExp()
                 elseif self.stream.tryConsume(".") then
                     assert(self.stream.cur.type == "alnum", "expected identifier after .")
                     self.stream.nextToken()
-                elseif self.stream.tryConsume(":") then
+                elseif self.stream.next.value ~= ":" and self.stream.tryConsume(":") then
                     assert(self.stream.cur.type == "alnum", "expected identifier after :")
                     self.stream.nextToken()
                     self:parseArgs()
