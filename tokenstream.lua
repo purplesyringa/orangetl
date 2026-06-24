@@ -49,7 +49,7 @@ local function makeTokenStream(code)
         end
     end
 
-    function stream.curPreceededByNewline()
+    function stream.isCurPreceededByNewline()
         return code:sub(stream.prev.last + 1, stream.cur.first - 1):find("\n") ~= nil
     end
 

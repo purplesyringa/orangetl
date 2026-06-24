@@ -197,7 +197,7 @@ function Transpiler:parseShallow(until_what)
         elseif (
             self.stream.cur.value == "("
             and not self.opts.lua_quirks
-            and self.stream.curPreceededByNewline()
+            and self.stream.isCurPreceededByNewline()
             -- Match parentheses in a function call, but not in grouping. Types
             -- (`function(...)` and `(type)`) and function signatures (`function [name](...)`) are
             -- automatically excluded because they are parsed separately. This erronously recognizes
@@ -604,7 +604,7 @@ function Transpiler:parseExp()
                 elseif (
                     self.stream.cur.value == "("
                     and not self.opts.lua_quirks
-                    and self.stream.curPreceededByNewline()
+                    and self.stream.isCurPreceededByNewline()
                 ) then
                     -- Teal idiosyncrasy
                     self.chopper.insert(self.stream.prev.last + 1, ";")
