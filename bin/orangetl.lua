@@ -1,7 +1,7 @@
 local argparse = require("argparse")
-local transpiler = require("orange.transpiler")
+local transpiler = require("orangetl.transpiler")
 
-local parser = argparse("orange", "A fast Teal-to-Lua transpiler.")
+local parser = argparse("orangetl", "A fast Teal-to-Lua transpiler.")
 parser:argument("file", "Input file."):target("input")
 parser:option("-o", "Output file."):argname("<filename>"):target("output")
 parser:option("-l", "Parse code as Lua or Teal."):target("language"):choices({ "lua", "teal" })

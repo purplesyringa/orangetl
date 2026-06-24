@@ -1,5 +1,5 @@
-local chopping = require("orange.chopping")
-local tokenstream = require("orange.tokenstream")
+local chopping = require("orangetl.chopping")
+local tokenstream = require("orangetl.tokenstream")
 
 local function anyOf(s, pattern)
     for t in pattern:gmatch("[^%s]+") do

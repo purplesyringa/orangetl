@@ -1,7 +1,7 @@
-package = "orange"
+package = "orangetl"
 version = "1.0-1"
 source = {
-    url = "git://github.com/purplesyringa/orange",
+    url = "git://github.com/purplesyringa/orangetl",
     tag = "v1.0",
 }
 description = {
@@ -10,7 +10,7 @@ description = {
         A fast Teal transpiler without type checking or validation,
         suitable for runtime use.
     ]],
-    homepage = "https://github.com/purplesyringa/orange",
+    homepage = "https://github.com/purplesyringa/orangetl",
     license = "MIT",
 }
 dependencies = {
@@ -22,7 +22,7 @@ build = {
     modules = {},
     install = {
         bin = {
-            orange = "bin/orange.lua",
+            orangetl = "bin/orangetl.lua",
         },
     },
 }

@@ -1,4 +1,4 @@
-local transpiler = require("orange.transpiler")
+local transpiler = require("orangetl.transpiler")
 
 return {
     transpile = transpiler.transpile,

@@ -1,12 +1,12 @@
-# Orange
+# orangetl
 
 A just-in-time [Teal](https://teal-language.org/)-to-Lua transpiler.
 
-Orange does not perform any validation or type checking, so it's incredibly fast and can be used to directly `require` Teal code without a build step, similarly to how NodeJS can execute TypeScript.
+`orangetl` does not perform any validation or type checking, so it's incredibly fast and can be used to directly `require` Teal code without a build step, similarly to how NodeJS can execute TypeScript.
 
 ## Compatibility
 
-Orange supports all Teal features, with a few exceptions arising from the single-pass design:
+`orangetl` supports all Teal features, with a few exceptions arising from the single-pass design:
 
 - Rust-style macros are not supported.
 - `macroexp` methods are not supported (except `where`), and unscoped `macroexp`s are replaced with `function`s.
@@ -14,7 +14,7 @@ Orange supports all Teal features, with a few exceptions arising from the single
 ## Install
 
 ```shell
-$ luarocks install orange
+$ luarocks install orangetl
 ```
 
 ## Usage
@@ -22,14 +22,14 @@ $ luarocks install orange
 Transpile a file via CLI:
 
 ```shell
-$ orange script.tl -o script.lua
+$ orangetl script.tl -o script.lua
 ```
 
 Transpile a file via API:
 
 ```lua
-local orange = require "orange"
-local lua_code = orange.transpile(teal_code[, opts])
+local orangetl = require "orangetl"
+local lua_code = orangetl.transpile(teal_code[, opts])
 ```
 
 The supported options are:
