@@ -240,7 +240,8 @@ end
 -- parser.
 function Transpiler:parseLocalGlobal()
     -- `global` is implicit in Lua, and with Teal semantics it's unsound to keep it even in Lua 5.5.
-    if self.stream.cur.value == "global" then
+    local is_global = self.stream.cur.value == "global"
+    if is_global then
         self.chopper.cut(self.stream.cur.first, self.stream.next.first - 1)
     end
     self.stream.nextToken()
@@ -275,6 +276,9 @@ function Transpiler:parseLocalGlobal()
         -- Variable definition. We have to parse this until the type because function types are
         -- syntactically indistinguishable from the start of a closure, but don't require an `end`,
         -- and trying to use the shallow parser on this breaks `end` detection.
+        local def_first = self.stream.cur.first
+        local to_cut = {}
+
         repeat
             assert(self.stream.cur.type == "alnum", "invalid syntax in definition")
             self.stream.nextToken()
@@ -295,7 +299,8 @@ function Transpiler:parseLocalGlobal()
                     )
                 end
                 if self.opts.strip_attributes or attr == "total" then
-                    self.chopper.cut(first, self.stream.prev.last)
+                    -- Delay cutting until we decide if we want to delete the statement altogether.
+                    table.insert(to_cut, { first = first, last = self.stream.prev.last })
                 end
             end
         until not self.stream.tryConsume(",")
@@ -306,7 +311,17 @@ function Transpiler:parseLocalGlobal()
             repeat
                 self:parseType()
             until not self.stream.tryConsume(",")
-            self.chopper.cut(first, self.stream.prev.last)
+            table.insert(to_cut, { first = first, last = self.stream.prev.last })
+        end
+
+        if is_global and self.stream.cur.value ~= "=" then
+            -- Delete `global` definitions without values.
+            self.chopper.cut(def_first, self.stream.prev.last)
+        else
+            -- Apply attribute stripping.
+            for _, range in ipairs(to_cut) do
+                self.chopper.cut(range.first, range.last)
+            end
         end
     end
 end
