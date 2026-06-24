@@ -341,13 +341,16 @@ function Transpiler:parseTypeDefinition(allow_empty)
     self.stream.nextToken()
     self.stream.nextToken()
 
+    local typeargs_first = self.stream.cur.first
     self:maybeParseTypeArgs()
+    local typeargs_last = self.stream.prev.last
 
     if def_type == "type" then
         if self.stream.tryConsume("=") then
             -- Remove `type` prefix.
             self.chopper.cut(first, name_token.first - 1)
         else
+            -- Removes the entire declaration, including typeargs.
             assert(allow_empty, "expected = <newtype> after 'type _'")
             self.chopper.cut(first, self.stream.prev.last)
             return
@@ -357,6 +360,9 @@ function Transpiler:parseTypeDefinition(allow_empty)
         self.chopper.cut(first, name_token.first - 1)
         self.chopper.insert(name_token.last + 1, " =")
     end
+
+    -- Cut out typeargs.
+    self.chopper.cut(typeargs_first, typeargs_last)
 
     if def_type == "enum" then
         self:parseEnumBody()
