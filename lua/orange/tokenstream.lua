@@ -1,4 +1,4 @@
-local lex = require "lex"
+local lex = require "orange.lex"
 
 local function makeTokenStream(code)
     local lexer = lex.lex(code)

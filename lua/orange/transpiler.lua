@@ -1,5 +1,5 @@
-local chopping = require "chopping"
-local tokenstream = require "tokenstream"
+local chopping = require "orange.chopping"
+local tokenstream = require "orange.tokenstream"
 
 local function anyOf(s, pattern)
     for t in pattern:gmatch("[^%s]+") do
@@ -691,7 +691,6 @@ function Transpiler:maybeParseTypeArgs()
     end
 end
 
-local f = io.open(arg[1], "rb")
-local content = f:read("*a")
-f:close()
-print(transpile(content))
+return {
+    transpile = transpile,
+}
