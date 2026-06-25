@@ -284,8 +284,8 @@ function Transpiler:parseLocalGlobal()
         repeat
             assert(self.stream.cur.type == "alnum", "invalid syntax in definition")
             self.stream.nextToken()
-            -- Handle attributes: we need to remove `<total>` and annotate the closing angle bracket
-            -- for the shallow parser.
+            -- Handle attributes: we need to rewrite `<total>` and annotate the closing angle
+            -- bracket for the shallow parser.
             if self.stream.tryConsume("<") then
                 local first = self.stream.prev.first
                 assert(self.stream.cur.type == "alnum", "expected identifier in attribute")
@@ -299,10 +299,18 @@ function Transpiler:parseLocalGlobal()
                         attr == "const" or attr == "total",
                         "cannot strip attribute '" .. attr .. "'"
                     )
-                end
-                if self.opts.strip_attributes or attr == "total" then
                     -- Delay cutting until we decide if we want to delete the statement altogether.
                     table.insert(to_cut, { first = first, last = self.stream.prev.last })
+                elseif attr == "total" then
+                    -- Teal translates <total> to <const>.
+                    table.insert(
+                        to_cut,
+                        {
+                            first = self.stream.prev2.first,
+                            last = self.stream.prev2.last,
+                            value = "const",
+                        }
+                    )
                 end
             end
         until not self.stream.tryConsume(",")
@@ -322,7 +330,7 @@ function Transpiler:parseLocalGlobal()
         else
             -- Apply attribute stripping.
             for _, range in ipairs(to_cut) do
-                self.chopper.cut(range.first, range.last)
+                self.chopper.cut(range.first, range.last, range.value)
             end
         end
     end
