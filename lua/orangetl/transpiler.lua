@@ -531,7 +531,7 @@ end
 -- Parse a base type, returning a condition checking whether a value is of this type according to
 -- the logic of the `is` operator. `!` is substituted for the variable name that is being checked.
 function Transpiler:parseBaseType()
-    if anyOf(self.stream.cur.value, "string boolean nil number thread table") then
+    if anyOf(self.stream.cur.value, "string boolean number thread table") then
         self.stream.nextToken()
         return 'type(!) == "' .. self.stream.prev.value .. '"'
     elseif self.stream.tryConsume("any") then
@@ -539,6 +539,8 @@ function Transpiler:parseBaseType()
         return 'type(!) == "table"'
     elseif self.stream.tryConsume("integer") then
         return 'math.type(!) == "integer"'
+    elseif self.stream.tryConsume("nil") then
+        return '! == nil'
     elseif self.stream.cur.value == "{" then
         self:parseParenthesized("{", "}")
         return 'type(!) == "table"'
