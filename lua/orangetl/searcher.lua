@@ -1,6 +1,6 @@
 local transpiler = require("orangetl.transpiler")
 
-local function loadTealFile(file)
+local function loadTealFile(file, ...)
     local f, err = io.open(file, "rb")
     if not f then
         error(err, 0)
@@ -18,7 +18,7 @@ local function loadTealFile(file)
         error("in transpiled code: " .. err, 0)
     end
 
-    return closure()
+    return closure(...)
 end
 
 local function searcher(name)
@@ -57,5 +57,6 @@ local function searcher(name)
 end
 
 return {
+    loadTealFile = loadTealFile,
     searcher = searcher,
 }

@@ -22,12 +22,20 @@ $ luarocks install orangetl
 Transpile a file via CLI:
 
 ```shell
-$ orangetl script.tl -o script.lua
+$ orangetl gen script.tl -o script.lua
 ```
 
 ---
 
-Register a searcher for `.tl` files (reuses `package.path`, replacing `.lua` with `.tl`):
+Run a Teal file:
+
+```shell
+$ orangetl run script.tl
+```
+
+---
+
+Programmatically register a searcher for `.tl` files (reuses `package.path`, replacing `.lua` with `.tl`), so that `require` works on `.tl` files:
 
 ```lua
 table.insert(package.searchers or package.loaders, 2, require "orangetl".searcher)
