@@ -55,7 +55,9 @@ if args.command == "gen" then
     f:write(lua_code)
     f:close()
 elseif args.command == "run" then
+    -- luacheck: push ignore
     table.insert(package.searchers or package.loaders, 2, searcher.searcher)
     arg = args.args
-    searcher.loadTealFile(args.script, table.unpack(args.args))
+    searcher.loadTealFile(args.script, (table.unpack or unpack)(args.args))
+    -- luacheck: pop
 end
