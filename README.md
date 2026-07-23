@@ -57,6 +57,8 @@ local lua_code = orangetl.transpile(teal_code[, opts])
 
 The supported options are:
 
+- `keep_hashbang: boolean`: don't delete the `#!` line, if present.
+
 - `strip_attributes: boolean`: whether to drop `<const>` attributes. Useful for compatibility with Lua < 5.4, which doesn't support attributes. This doesn't drop attributes that affect runtime semantics, such as `<close>`.
 
 - `replace_named_varargs: boolean`: whether to replace `...<name>` varargs with `...` and a manual `table.pack` call. Useful for compatibility with Lua < 5.5, but has a performance impact when sued.

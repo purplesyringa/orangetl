@@ -13,7 +13,10 @@ end
 local Transpiler = {}
 
 local function transpile(code, opts)
-    code = code:gsub("^#[^\n]*", "") -- remove shebang
+    local hashbang = code:match("^#[^\n]*")
+    -- Remove the hashbang unconditionally so that it's not tokenized. We'll bring it back at the
+    -- end if necessary.
+    code = code:gsub("^#[^\n]*", "")
     local transpiler = setmetatable({
         code = code,
         stream = tokenstream.makeTokenStream(code),
@@ -21,7 +24,11 @@ local function transpile(code, opts)
         opts = opts or {},
     }, { __index = Transpiler })
     transpiler:parseShallow("eof")
-    return transpiler.chopper.finish()
+    code = transpiler.chopper.finish()
+    if hashbang and opts.keep_hashbang then
+        code = hashbang .. code
+    end
+    return code
 end
 
 -- An approximate, non-recursive parser that greps for structures we're interested in without

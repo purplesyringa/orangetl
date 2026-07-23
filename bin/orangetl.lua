@@ -9,6 +9,7 @@ local gen = parser:command("gen", "Generate a Lua file from a Teal file.")
 gen:argument("file", "Input file."):target("input")
 gen:option("-o", "Output file."):argname("<filename>"):target("output")
 gen:option("-l", "Parse code as Lua or Teal."):target("language"):choices({ "lua", "teal" })
+gen:flag("--keep-hashbang", "Preserve hashbang, if present.")
 gen:flag("--strip-attributes", "Strip attributes (for compatibility with Lua < 5.4).")
 gen:flag("--replace-named-varargs", "Replace named varargs (for compatibility with Lua < 5.5).")
 gen:flag(
@@ -46,6 +47,7 @@ if args.command == "gen" then
     else
         opts.lua_quirks = args.input:match("%.tl$") == nil
     end
+    opts.keep_hashbang = args.keep_hashbang
     opts.strip_attributes = args.strip_attributes
     opts.replace_named_varargs = args.replace_named_varargs
     opts.rewrite_for_reassignments = args.rewrite_for_reassignments
