@@ -627,7 +627,7 @@ function Transpiler:parseFuncBodySignature()
     self:maybeParseTypeArgs()
     self.chopper.cut(first, self.stream.prev.last)
 
-    local emulated_named_vararg = nil
+    local named_vararg = nil
 
     assert(self.stream.tryConsume("("), "expected ( in function definition")
     while not self.stream.tryConsume(")") do
@@ -645,9 +645,9 @@ function Transpiler:parseFuncBodySignature()
             and self.stream.tryConsume(".")
         then
             if self.stream.cur.type == "alnum" then
-                -- Emulate named varargs with `table.pack`.
+                -- Emulate named varargs with `table.pack` or `select`.
                 self.chopper.cut(self.stream.cur.first, self.stream.cur.last)
-                emulated_named_vararg = self.stream.cur.value
+                named_vararg = self.stream.cur.value
                 self.stream.nextToken()
             end
             -- Otherwise, this can be a `:` -- make sure not to skip it by accident.
@@ -664,11 +664,16 @@ function Transpiler:parseFuncBodySignature()
         self.chopper.cut(first, self.stream.prev.last)
     end
 
-    if emulated_named_vararg then
-        self.chopper.insert(
-            self.stream.prev.last + 1,
-            " local " .. emulated_named_vararg .. " = table.pack(...)"
-        )
+    if named_vararg then
+        local value
+        if self.opts.replace_named_varargs == "5.2" then
+            value = "table.pack(...)"
+        elseif self.opts.replace_named_varargs == "5.1" then
+            value = 'table.pack and table.pack(...) or { n = select("#", ...), ... }'
+        else
+            error("Invalid replace_named_varargs option value")
+        end
+        self.chopper.insert(self.stream.prev.last + 1, " local " .. named_vararg .. " = " .. value)
     end
 end
 

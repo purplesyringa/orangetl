@@ -11,7 +11,8 @@ gen:option("-o", "Output file."):argname("<filename>"):target("output")
 gen:option("-l", "Parse code as Lua or Teal."):target("language"):choices({ "lua", "teal" })
 gen:flag("--keep-hashbang", "Preserve hashbang, if present.")
 gen:flag("--strip-attributes", "Strip attributes (for compatibility with Lua < 5.4).")
-gen:flag("--replace-named-varargs", "Replace named varargs (for compatibility with Lua < 5.5).")
+gen:option("--replace-named-varargs", "Replace named varargs (for compatibility with Lua < 5.5).")
+    :choices({ "5.2", "5.1" })
 gen:flag(
     "--rewrite-for-reassignments",
     "Rewrite assignments to 'for' control variables (for compatibility with Lua >= 5.4)."

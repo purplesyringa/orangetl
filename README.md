@@ -61,7 +61,10 @@ The supported options are:
 
 - `strip_attributes: boolean`: whether to drop `<const>` attributes. Useful for compatibility with Lua < 5.4, which doesn't support attributes. This doesn't drop attributes that affect runtime semantics, such as `<close>`.
 
-- `replace_named_varargs: boolean`: whether to replace `...<name>` varargs with `...` and a manual `table.pack` call. Useful for compatibility with Lua < 5.5, but has a performance impact when sued.
+- `replace_named_varargs: string`: replace `...<name>` varargs with `...` and a manual assignment to `<name>`. Useful for compatibility with Lua < 5.5, but has a performance impact when used. The following values are supported:
+  - `nil` (absent): don't replace.
+  - `"5.2"`: implement via `table.pack` (works for Lua >= 5.2).
+  - `"5.1"`: choose between `table.pack` and `select` in runtime (universal).
 
 - `rewrite_for_reassignments: boolean`: add `local <name> = <name>` to the beginning of all `for` loops to prevent the `attempt to assign to const variable '<name>'` error added in Lua >= 5.4. Teal enables this rewrite by default, but in `orangetl` it has performance implications for all `for` loops, not just those with reassignments, so it's off by default in `orangetl`.
 
