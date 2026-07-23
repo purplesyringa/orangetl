@@ -22,7 +22,9 @@ if args.command == "gen" then
     if not args.output then
         local input_without_tl = args.input:gsub("%.tl$", "")
         if input_without_tl == args.input then
-            io.stderr:write("Error: cannot infer output file path when input doesn't end with '.tl'\n")
+            io.stderr:write(
+                "Error: cannot infer output file path when input doesn't end with '.tl'\n"
+            )
             os.exit(1)
         end
         args.output = input_without_tl .. ".lua"
