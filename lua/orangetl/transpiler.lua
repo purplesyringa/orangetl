@@ -17,14 +17,28 @@ local function transpile(code, opts)
     -- Remove the hashbang unconditionally so that it's not tokenized. We'll bring it back at the
     -- end if necessary.
     code = code:gsub("^#[^\n]*", "")
+
     local transpiler = setmetatable({
         code = code,
         stream = tokenstream.makeTokenStream(code),
         chopper = chopping.makeChopper(code),
         opts = opts or {},
+        -- Pretty much all files access 'type', don't bother tracking it.
+        accessed_globals = { type = true },
     }, { __index = Transpiler })
     transpiler:parseShallow("eof")
     code = transpiler.chopper.finish()
+
+    if opts.localize_implicit_globals then
+        local accessed_globals = {}
+        for name, _ in pairs(transpiler.accessed_globals) do
+            table.insert(accessed_globals, name)
+        end
+        table.sort(accessed_globals) -- for reproducibility
+        accessed_globals = table.concat(accessed_globals, ", ")
+        code = "local " .. accessed_globals .. " = " .. accessed_globals .. "; " .. code
+    end
+
     if hashbang and opts.keep_hashbang then
         code = hashbang .. code
     end
@@ -588,6 +602,7 @@ function Transpiler:parseBaseType()
         -- Weird, but that's the way it's lowered.
         return 'type(!) == "table"', false
     elseif self.stream.tryConsume("integer") then
+        self.accessed_globals.math = true
         return 'math.type(!) == "integer"', false
     elseif self.stream.tryConsume("nil") then
         return "! == nil", false
@@ -666,9 +681,11 @@ function Transpiler:parseFuncBodySignature()
 
     if named_vararg then
         local value
+        self.accessed_globals.table = true
         if self.opts.replace_named_varargs == "5.2" then
             value = "table.pack(...)"
         elseif self.opts.replace_named_varargs == "5.1" then
+            self.accessed_globals.select = true
             value = 'table.pack and table.pack(...) or { n = select("#", ...), ... }'
         else
             error("Invalid replace_named_varargs option value")

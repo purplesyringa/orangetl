@@ -70,6 +70,8 @@ The supported options are:
 
 - `rewrite_string_escapes: boolean`: rewrite `\z`, `\x`, and `\u` escapes in strings with escapes supported by Lua < 5.3.
 
+- `localize_implicit_globals: boolean`: prepend `local <name> = <name>` definitions for globals accessed by the generated code. Useful for code that uses `local _ENV = nil` to protect against implicit global access.
+
 - `lua_quirks: boolean`: if `true`, assumes that the input code follows Lua syntax rather than Teal syntax; the two disagree about newline handling in edge cases.
 
 The transpiler may throw errors on syntactically invalid code.

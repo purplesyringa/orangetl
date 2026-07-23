@@ -21,6 +21,10 @@ gen:flag(
     "--rewrite-string-escapes",
     "Support \\z, \\x, and \\u string escapes (for compatibility with Lua < 5.3)."
 )
+gen:flag(
+    "--localize-implicit-globals",
+    "Prepend 'local <name> = <name>' for globals accessed by the generated code."
+)
 
 local run = parser:command("run", "Run a Teal script.")
 run:argument("script", "Path to script."):target("script")
@@ -53,6 +57,7 @@ if args.command == "gen" then
     opts.replace_named_varargs = args.replace_named_varargs
     opts.rewrite_for_reassignments = args.rewrite_for_reassignments
     opts.rewrite_string_escapes = args.rewrite_string_escapes
+    opts.localize_implicit_globals = args.localize_implicit_globals
 
     local f, err = io.open(args.input, "rb")
     if not f then
