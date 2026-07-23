@@ -15,6 +15,10 @@ gen:flag(
     "--rewrite-for-reassignments",
     "Rewrite assignments to 'for' control variables (for compatibility with Lua >= 5.4)."
 )
+gen:flag(
+    "--rewrite-string-escapes",
+    "Support \\z, \\x, and \\u string escapes (for compatibility with Lua < 5.3)."
+)
 
 local run = parser:command("run", "Run a Teal script.")
 run:argument("script", "Path to script."):target("script")
@@ -45,6 +49,7 @@ if args.command == "gen" then
     opts.strip_attributes = args.strip_attributes
     opts.replace_named_varargs = args.replace_named_varargs
     opts.rewrite_for_reassignments = args.rewrite_for_reassignments
+    opts.rewrite_string_escapes = args.rewrite_string_escapes
 
     local f, err = io.open(args.input, "rb")
     if not f then

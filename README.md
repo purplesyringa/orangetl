@@ -63,6 +63,8 @@ The supported options are:
 
 - `rewrite_for_reassignments: boolean`: add `local <name> = <name>` to the beginning of all `for` loops to prevent the `attempt to assign to const variable '<name>'` error added in Lua >= 5.4. Teal enables this rewrite by default, but in `orangetl` it has performance implications for all `for` loops, not just those with reassignments, so it's off by default in `orangetl`.
 
+- `rewrite_string_escapes: boolean`: rewrite `\z`, `\x`, and `\u` escapes in strings with escapes supported by Lua < 5.3.
+
 - `lua_quirks: boolean`: if `true`, assumes that the input code follows Lua syntax rather than Teal syntax; the two disagree about newline handling in edge cases.
 
 The transpiler may throw errors on syntactically invalid code.

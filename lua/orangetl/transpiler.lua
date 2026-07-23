@@ -247,6 +247,8 @@ function Transpiler:parseShallow(until_what)
             -- Teal idiosyncrasy
             self.chopper.insert(self.stream.prev.last + 1, ";")
             self.stream.nextToken()
+        elseif self.stream.cur.type == "string" then
+            self:parseString()
         else
             self.stream.nextToken()
         end
@@ -694,7 +696,7 @@ function Transpiler:parseExp()
         end
         -- Basic expression
         if self.stream.cur.type == "string" then
-            self.stream.nextToken()
+            self:parseString()
         elseif self.stream.tryConsume(".") then
             -- ... split into three tokens
             assert(self.stream.tryConsume("."), "expected ... in expression context")
@@ -782,7 +784,7 @@ function Transpiler:parseArgs()
     elseif self.stream.tryConsume("{") then
         self:parseShallow("}")
     elseif self.stream.cur.type == "string" then
-        self.stream.nextToken()
+        self:parseString()
     else
         error("invalid function call syntax")
     end
@@ -809,6 +811,86 @@ end
 function Transpiler:maybeParseTypeArgs()
     if self.stream.cur.value == "<" then
         self:parseParenthesized("<", ">")
+    end
+end
+
+-- Rewrites a string, assuming it's the current token.
+function Transpiler:parseString()
+    self.stream.nextToken()
+
+    if not self.opts.rewrite_string_escapes then
+        return
+    end
+
+    if self.code:sub(self.stream.prev.first, self.stream.prev.first) == "[" then
+        return
+    end
+
+    local s = self.stream.prev.value
+    local offset = self.stream.prev.first - 1
+    local whitespace_updated = false
+
+    for backslashes, pos, escape in s:gmatch("(\\+)()([zxu])") do
+        -- Skip misleading escapes with an even number of backslashes (e.g. `\\x`).
+        if #backslashes % 2 == 1 then
+            if escape == "z" then
+                -- \z skips white-space characters following it.
+                local next = s:find("%S", pos + 1) or #s + 1
+                self.chopper.cut(offset + pos - 1, offset + next - 1, nil, true)
+                whitespace_updated = true
+            elseif escape == "x" then
+                -- \xNN inserts a character in hexadecimal.
+                local ch = tonumber(s:sub(pos + 1, pos + 3), 16)
+                -- Lua encodes `\ddd` in decimal instead of octal for some reason??
+                self.chopper.cut(offset + pos, offset + pos + 2, ("%03d"):format(ch))
+            elseif escape == "u" then
+                -- \u{...} encodes a codepoint in UTF-8. Notably, this works for surrogates, as well
+                -- as all codepoints up to 2^31 - 1, which yields a 6-byte string.
+                local codepoint, next = s:match("^{(.-)}()", pos + 1)
+                codepoint = tonumber(codepoint, 16)
+                local bytes
+                -- luacheck: push ignore
+                if utf8 then
+                    bytes = utf8.char(codepoint)
+                else
+                    -- luacheck: pop
+                    -- We want this code to work on Lua < 5.3, which doesn't have the `utf8` module,
+                    -- so we construct the UTF-8 representation by hand.
+                    local leading, tail_bitlen
+                    if codepoint < 0x80 then
+                        leading, tail_bitlen = 0, 0
+                    elseif codepoint < 0x800 then
+                        leading, tail_bitlen = 0xc0, 6
+                    elseif codepoint < 0x10000 then
+                        leading, tail_bitlen = 0xe0, 12
+                    elseif codepoint < 0x200000 then
+                        leading, tail_bitlen = 0xf0, 18
+                    elseif codepoint < 0x4000000 then
+                        leading, tail_bitlen = 0xf8, 24
+                    else
+                        leading, tail_bitlen = 0xfc, 30
+                    end
+                    -- Lua 5.1 support neither `bit32`, nor `bit`, so this is quite hacky.
+                    local function rshift(a, b)
+                        return math.floor(a / 2 ^ b)
+                    end
+                    bytes = string.char(leading + rshift(codepoint, tail_bitlen))
+                    for shift = tail_bitlen - 6, 0, -6 do
+                        bytes = bytes .. string.char(0x80 + rshift(codepoint, shift) % 0x40)
+                    end
+                end
+                local encoded = ""
+                for i = 1, #bytes do
+                    encoded = encoded .. ("\\%03d"):format(bytes:byte(i))
+                end
+                self.chopper.cut(offset + pos - 1, offset + next - 1, encoded)
+            end
+        end
+    end
+
+    -- Dump all removed newlines at the end.
+    if whitespace_updated then
+        self.chopper.insert(self.stream.prev.last + 1, "")
     end
 end
 
