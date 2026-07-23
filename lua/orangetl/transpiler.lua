@@ -398,9 +398,10 @@ function Transpiler:parseTypeDefinition(allow_empty)
             end
         else
             local first = self.stream.cur.first
-            local condition = self:parseType()
-            -- TODO: optimize to passthrough
-            local def = "{ __is = function(self) return " .. condition:gsub("!", "self") .. " end }"
+            local condition, def = self:parseType()
+            if not def then
+                def = "{ __is = function(self) return " .. condition:gsub("!", "self") .. " end }"
+            end
             self.chopper.cut(first, self.stream.prev.last, def)
         end
     else
@@ -532,36 +533,40 @@ function Transpiler:parseIs()
     self.chopper.cut(first, self.stream.prev.last, "(" .. condition:gsub("!", name) .. ")")
 end
 
--- Parse a type, returning a condition similar to `parseBaseType`.
+-- Parse a type, returning a condition and a nominal type similar to `parseBaseType`.
 function Transpiler:parseType()
     if self.stream.tryConsume("(") then
-        local condition = self:parseType(self.stream)
+        local condition, nominal = self:parseType(self.stream)
         assert(self.stream.tryConsume(")"), "expected ) in parenthesized type")
-        return condition
+        return condition, nominal
     end
-    local conditions = { self:parseBaseType() }
+    local condition, nominal = self:parseBaseType()
+    local conditions = { condition }
     while self.stream.tryConsume("|") do
         table.insert(conditions, self:parseBaseType())
+        nominal = nil
     end
-    return table.concat(conditions, " or ")
+    return table.concat(conditions, " or "), nominal
 end
 
--- Parse a base type, returning a condition checking whether a value is of this type according to
--- the logic of the `is` operator. `!` is substituted for the variable name that is being checked.
+-- Parse a base type, returning:
+-- 1. A condition checking whether a value is of this type according to the logic of the `is`
+--    operator. `!` is substituted for the variable name that is being checked.
+-- 2. The exact nominal type as a string, or `nil` if this is a non-nominal type.
 function Transpiler:parseBaseType()
     if anyOf(self.stream.cur.value, "string boolean number thread table userdata") then
         self.stream.nextToken()
-        return 'type(!) == "' .. self.stream.prev.value .. '"'
+        return 'type(!) == "' .. self.stream.prev.value .. '"', nil
     elseif self.stream.tryConsume("any") then
         -- Weird, but that's the way it's lowered.
-        return 'type(!) == "table"'
+        return 'type(!) == "table"', nil
     elseif self.stream.tryConsume("integer") then
-        return 'math.type(!) == "integer"'
+        return 'math.type(!) == "integer"', nil
     elseif self.stream.tryConsume("nil") then
-        return '! == nil'
+        return '! == nil', nil
     elseif self.stream.cur.value == "{" then
         self:parseParenthesized("{", "}")
-        return 'type(!) == "table"'
+        return 'type(!) == "table"', nil
     elseif self.stream.tryConsume("function") then
         self:maybeParseTypeArgs()
         -- `function` or `function<...>` alone denotes an arbitrary function.
@@ -572,7 +577,7 @@ function Transpiler:parseBaseType()
                 self:parseRetList()
             end
         end
-        return 'type(!) == "function"'
+        return 'type(!) == "function"', nil
     elseif self.stream.cur.type == "alnum" then
         -- nominal type
         local first = self.stream.cur.first
@@ -581,9 +586,9 @@ function Transpiler:parseBaseType()
         while self.stream.next.type == "alnum" and self.stream.tryConsume(".") do
             self.stream.nextToken()
         end
-        local last = self.stream.prev.last
+        local nominal = self.code:sub(first, self.stream.prev.last)
         self:maybeParseTypeArgs()
-        return self.code:sub(first, last) .. ".__is(!)"
+        return nominal .. ".__is(!)", nominal
     else
         error("invalid basetype")
     end
