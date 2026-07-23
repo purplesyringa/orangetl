@@ -11,6 +11,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@master
+    - name: Spell-check
+      uses: crate-ci/typos@v1.48.0
     - name: Install Lua
       uses: leafo/gh-actions-lua@v13
       with:
