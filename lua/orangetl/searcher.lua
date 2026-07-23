@@ -11,6 +11,10 @@ local function loadTealFile(file, ...)
     local lua_code = transpiler.transpile(teal_code, {
         -- Avoid using logic like `_VERSION <= "Lua 5.3"` in case Lua 5.10 releases.
         strip_attributes = _VERSION == "Lua 5.1" or _VERSION == "Lua 5.2" or _VERSION == "Lua 5.3",
+        replace_named_varargs = _VERSION == "Lua 5.1"
+            or _VERSION == "Lua 5.2"
+            or _VERSION == "Lua 5.3"
+            or _VERSION == "Lua 5.4",
     })
 
     local closure, err = (loadstring or load)(lua_code, "@" .. file, "t") -- luacheck: ignore

@@ -10,6 +10,7 @@ gen:argument("file", "Input file."):target("input")
 gen:option("-o", "Output file."):argname("<filename>"):target("output")
 gen:option("-l", "Parse code as Lua or Teal."):target("language"):choices({ "lua", "teal" })
 gen:flag("--strip-attributes", "Strip attributes (for compatibility with Lua < 5.4).")
+gen:flag("--replace-named-varargs", "Replace named varargs (for compatibility with Lua < 5.5).")
 
 local run = parser:command("run", "Run a Teal script.")
 run:argument("script", "Path to script."):target("script")
@@ -36,6 +37,7 @@ if args.command == "gen" then
         opts.lua_quirks = args.input:match("%.tl$") == nil
     end
     opts.strip_attributes = args.strip_attributes
+    opts.replace_named_varargs = args.replace_named_varargs
 
     local f, err = io.open(args.input, "rb")
     if not f then

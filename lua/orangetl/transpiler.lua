@@ -597,6 +597,8 @@ function Transpiler:parseFuncBodySignature()
     self:maybeParseTypeArgs()
     self.chopper.cut(first, self.stream.prev.last)
 
+    local emulated_named_vararg = nil
+
     assert(self.stream.tryConsume("("), "expected ( in function definition")
     while not self.stream.tryConsume(")") do
         if self.stream.tryConsume(":") then
@@ -605,6 +607,18 @@ function Transpiler:parseFuncBodySignature()
             self.chopper.cut(first, self.stream.prev.last)
         elseif self.stream.tryConsume("?") then
             self.chopper.cut(self.stream.prev.first, self.stream.prev.last)
+        elseif
+            self.opts.replace_named_varargs
+            -- ... split into three tokens
+            and self.stream.tryConsume(".")
+            and self.stream.tryConsume(".")
+            and self.stream.tryConsume(".")
+            and self.stream.cur.type == "alnum"
+        then
+            -- Emulate named varargs with `table.pack`.
+            self.chopper.cut(self.stream.cur.first, self.stream.cur.last)
+            emulated_named_vararg = self.stream.cur.value
+            self.stream.nextToken()
         else
             -- Keep names and commas as is without wasting time parsing the exact grammar.
             self.stream.nextToken()
@@ -616,6 +630,13 @@ function Transpiler:parseFuncBodySignature()
         local first = self.stream.prev.first
         self:parseRetList()
         self.chopper.cut(first, self.stream.prev.last)
+    end
+
+    if emulated_named_vararg then
+        self.chopper.insert(
+            self.stream.prev.last + 1,
+            " local " .. emulated_named_vararg .. " = table.pack(...)"
+        )
     end
 end
 
