@@ -540,7 +540,8 @@ function Transpiler:parseType()
     local condition, nominal = self:parseBaseType()
     local conditions = { condition }
     while self.stream.tryConsume("|") do
-        table.insert(conditions, self:parseBaseType())
+        condition = self:parseBaseType()
+        table.insert(conditions, condition)
         nominal = nil
     end
     return table.concat(conditions, " or "), nominal
@@ -613,12 +614,14 @@ function Transpiler:parseFuncBodySignature()
             and self.stream.tryConsume(".")
             and self.stream.tryConsume(".")
             and self.stream.tryConsume(".")
-            and self.stream.cur.type == "alnum"
         then
-            -- Emulate named varargs with `table.pack`.
-            self.chopper.cut(self.stream.cur.first, self.stream.cur.last)
-            emulated_named_vararg = self.stream.cur.value
-            self.stream.nextToken()
+            if self.stream.cur.type == "alnum" then
+                -- Emulate named varargs with `table.pack`.
+                self.chopper.cut(self.stream.cur.first, self.stream.cur.last)
+                emulated_named_vararg = self.stream.cur.value
+                self.stream.nextToken()
+            end
+            -- Otherwise, this can be a `:` -- make sure not to skip it by accident.
         else
             -- Keep names and commas as is without wasting time parsing the exact grammar.
             self.stream.nextToken()

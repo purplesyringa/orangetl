@@ -6,6 +6,7 @@ local function loadTealFile(file, ...)
         error(err, 0)
     end
     local teal_code = f:read("*all")
+    assert(teal_code, "cannot read " .. file)
     f:close()
 
     local lua_code = transpiler.transpile(teal_code, {
