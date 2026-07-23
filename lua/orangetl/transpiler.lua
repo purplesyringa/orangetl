@@ -412,11 +412,13 @@ function Transpiler:parseTypeDefinition(allow_empty)
             end
         else
             local first = self.stream.cur.first
-            local condition, def = self:parseType()
-            if not def then
-                def = "{ __is = function(self) return " .. condition:gsub("!", "self") .. " end }"
+            local condition, is_nominal = self:parseType()
+            if not is_nominal then
+                local def = "{ __is = function(self) return "
+                    .. condition:gsub("!", "self")
+                    .. " end }"
+                self.chopper.cut(first, self.stream.prev.last, def)
             end
-            self.chopper.cut(first, self.stream.prev.last, def)
         end
     else
         self:parseRecordBody()
@@ -547,41 +549,42 @@ function Transpiler:parseIs()
     self.chopper.cut(first, self.stream.prev.last, "(" .. condition:gsub("!", name) .. ")")
 end
 
--- Parse a type, returning a condition and a nominal type similar to `parseBaseType`.
+-- Parse a type, returning a condition and whether the type is nominal, like `parseBaseType`.
 function Transpiler:parseType()
     if self.stream.tryConsume("(") then
-        local condition, nominal = self:parseType(self.stream)
+        local condition, is_nominal = self:parseType(self.stream)
         assert(self.stream.tryConsume(")"), "expected ) in parenthesized type")
-        return condition, nominal
+        return condition, is_nominal
     end
-    local condition, nominal = self:parseBaseType()
+    local condition, is_nominal = self:parseBaseType()
     local conditions = { condition }
     while self.stream.tryConsume("|") do
+        -- Don't inline into `table.insert(...)`, since it can misinterpret the second return value.
         condition = self:parseBaseType()
         table.insert(conditions, condition)
-        nominal = nil
+        is_nominal = false
     end
-    return table.concat(conditions, " or "), nominal
+    return table.concat(conditions, " or "), is_nominal
 end
 
 -- Parse a base type, returning:
 -- 1. A condition checking whether a value is of this type according to the logic of the `is`
 --    operator. `!` is substituted for the variable name that is being checked.
--- 2. The exact nominal type as a string, or `nil` if this is a non-nominal type.
+-- 2. Whether the type is a nominal type.
 function Transpiler:parseBaseType()
     if anyOf(self.stream.cur.value, "string boolean number thread table userdata") then
         self.stream.nextToken()
-        return 'type(!) == "' .. self.stream.prev.value .. '"', nil
+        return 'type(!) == "' .. self.stream.prev.value .. '"', false
     elseif self.stream.tryConsume("any") then
         -- Weird, but that's the way it's lowered.
-        return 'type(!) == "table"', nil
+        return 'type(!) == "table"', false
     elseif self.stream.tryConsume("integer") then
-        return 'math.type(!) == "integer"', nil
+        return 'math.type(!) == "integer"', false
     elseif self.stream.tryConsume("nil") then
-        return "! == nil", nil
+        return "! == nil", false
     elseif self.stream.cur.value == "{" then
         self:parseParenthesized("{", "}")
-        return 'type(!) == "table"', nil
+        return 'type(!) == "table"', false
     elseif self.stream.tryConsume("function") then
         self:maybeParseTypeArgs()
         -- `function` or `function<...>` alone denotes an arbitrary function.
@@ -592,7 +595,7 @@ function Transpiler:parseBaseType()
                 self:parseRetList()
             end
         end
-        return 'type(!) == "function"', nil
+        return 'type(!) == "function"', false
     elseif self.stream.cur.type == "alnum" then
         -- nominal type
         local first = self.stream.cur.first
@@ -603,7 +606,7 @@ function Transpiler:parseBaseType()
         end
         local nominal = self.code:sub(first, self.stream.prev.last)
         self:maybeParseTypeArgs()
-        return nominal .. ".__is(!)", nominal
+        return nominal .. ".__is(!)", true
     else
         error("invalid basetype")
     end
