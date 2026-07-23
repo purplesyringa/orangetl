@@ -303,14 +303,11 @@ function Transpiler:parseLocalGlobal()
                     table.insert(to_cut, { first = first, last = self.stream.prev.last })
                 elseif attr == "total" then
                     -- Teal translates <total> to <const>.
-                    table.insert(
-                        to_cut,
-                        {
-                            first = self.stream.prev2.first,
-                            last = self.stream.prev2.last,
-                            value = "const",
-                        }
-                    )
+                    table.insert(to_cut, {
+                        first = self.stream.prev2.first,
+                        last = self.stream.prev2.last,
+                        value = "const",
+                    })
                 end
             end
         until not self.stream.tryConsume(",")
@@ -563,7 +560,7 @@ function Transpiler:parseBaseType()
     elseif self.stream.tryConsume("integer") then
         return 'math.type(!) == "integer"', nil
     elseif self.stream.tryConsume("nil") then
-        return '! == nil', nil
+        return "! == nil", nil
     elseif self.stream.cur.value == "{" then
         self:parseParenthesized("{", "}")
         return 'type(!) == "table"', nil
