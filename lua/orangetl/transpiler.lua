@@ -99,7 +99,7 @@ function Transpiler:parseShallow(until_what)
                 end
             else
                 -- This is a keyword, since:
-                -- - If the preceeding token is alnum, this is three alnums in a row, which only
+                -- - If the preceding token is alnum, this is three alnums in a row, which only
                 --   permits an identifier `global` in `if global then`, `for global in`, etc.,
                 --   which have already been taken into account.
                 -- - After a string, `]`, `)`, `}`, or `...`, there is a known statement boundary.
@@ -204,7 +204,7 @@ function Transpiler:parseShallow(until_what)
         elseif
             self.stream.cur.value == "("
             and not self.opts.lua_quirks
-            and self.stream.isCurPreceededByNewline()
+            and self.stream.isCurPrecededByNewline()
             -- Match parentheses in a function call, but not in grouping. Types
             -- (`function(...)` and `(type)`) and function signatures (`function [name](...)`) are
             -- automatically excluded because they are parsed separately.
@@ -212,7 +212,7 @@ function Transpiler:parseShallow(until_what)
                 (
                     self.stream.prev.type == "alnum"
                     -- Exclude grouping after operators and statements, where expressions are
-                    -- expected. This erronously recognizes `where (...)` as a call, but `where` is
+                    -- expected. This erroneously recognizes `where (...)` as a call, but `where` is
                     -- parsed by the `exp` parser, not this one. It also recognizes
                     -- `goto label (...)` as a call, but inserting `;` between statements is fine --
                     -- it's expressions we have to worry about. Note that this list includes `do`
@@ -262,7 +262,7 @@ function Transpiler:parseLocalGlobal()
         if self.stream.cur.value == "macroexp" then
             -- Change to a function and let the shallow parser deal with it accordingly. This
             -- doesn't need to be handled in the shallow parser alone because keyword `macroexp` is
-            -- always preceeded by `local` or `global`.
+            -- always preceded by `local` or `global`.
             self.stream.cur.value = "function"
             self.chopper.cut(self.stream.cur.first, self.stream.cur.last, "function")
         else
@@ -399,6 +399,7 @@ function Transpiler:parseTypeDefinition(allow_empty)
         else
             local first = self.stream.cur.first
             local condition = self:parseType()
+            -- TODO: optimize to passthrough
             local def = "{ __is = function(self) return " .. condition:gsub("!", "self") .. " end }"
             self.chopper.cut(first, self.stream.prev.last, def)
         end
@@ -531,7 +532,7 @@ function Transpiler:parseIs()
     self.chopper.cut(first, self.stream.prev.last, "(" .. condition:gsub("!", name) .. ")")
 end
 
--- Parse a type, returning a condition similar to `parsBaseType`.
+-- Parse a type, returning a condition similar to `parseBaseType`.
 function Transpiler:parseType()
     if self.stream.tryConsume("(") then
         local condition = self:parseType(self.stream)
@@ -678,7 +679,7 @@ function Transpiler:parseExp()
                 elseif
                     self.stream.cur.value == "("
                     and not self.opts.lua_quirks
-                    and self.stream.isCurPreceededByNewline()
+                    and self.stream.isCurPrecededByNewline()
                 then
                     -- Teal idiosyncrasy
                     self.chopper.insert(self.stream.prev.last + 1, ";")
