@@ -448,12 +448,15 @@ function Transpiler:parseRecordBody()
 
     -- Cut carefully so that the `where` expression stays intact.
     if self.stream.tryConsume("where") then
-        self.chopper.cut(first, self.stream.prev.last, "{ __is = function(self) return ")
+        self.chopper.cut(first, self.stream.prev.last, "{ __is = function(self) return")
         self:parseExp()
         self.chopper.insert(self.stream.prev.last + 1, " end; ")
     else
         self.chopper.cut(first, self.stream.prev.last, "{ ")
+        -- Delay inserting `__is` until we know if this type is `userdata`.
     end
+
+    local is_userdata = false
 
     while not self.stream.tryConsume("end") do
         -- recordentry
@@ -463,6 +466,7 @@ function Transpiler:parseRecordBody()
             -- Ignore `userdata` when used as an identifier, e.g. in `userdata: type`.
             self.stream.cur.value == "userdata" and self.stream.next.value ~= ":"
         then
+            is_userdata = true
             self.stream.nextToken()
         elseif
             anyOf(self.stream.cur.value, "record interface enum type")
@@ -491,7 +495,17 @@ function Transpiler:parseRecordBody()
         end
     end
 
-    self.chopper.cut(self.stream.prev.first, self.stream.prev.last, "}")
+    local condition
+    if is_userdata then
+        condition = 'type(self) == "userdata"'
+    else
+        condition = 'type(self) == "table"'
+    end
+    self.chopper.cut(
+        self.stream.prev.first,
+        self.stream.prev.last,
+        "__is = function(self) return " .. condition .. " end; }"
+    )
 end
 
 -- Cut `as` casts.
