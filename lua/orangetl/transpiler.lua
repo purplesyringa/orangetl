@@ -344,6 +344,9 @@ end
 -- - To allow reexports of nested types to evaluate without triggering `nil` dereference, e.g. in
 --   `return Type.Nested`.
 -- - To populate the `__is` method for the `is` operator.
+--
+-- This differs from Teal, which only generates such definitions for records, but not interfaces or
+-- enums, because we need `__is` to be a runtime method.
 function Transpiler:parseTypeDefinition(allow_empty)
     local first = self.stream.cur.first
     local def_type = self.stream.cur.value
@@ -531,7 +534,7 @@ end
 -- Parse a base type, returning a condition checking whether a value is of this type according to
 -- the logic of the `is` operator. `!` is substituted for the variable name that is being checked.
 function Transpiler:parseBaseType()
-    if anyOf(self.stream.cur.value, "string boolean number thread table") then
+    if anyOf(self.stream.cur.value, "string boolean number thread table userdata") then
         self.stream.nextToken()
         return 'type(!) == "' .. self.stream.prev.value .. '"'
     elseif self.stream.tryConsume("any") then
