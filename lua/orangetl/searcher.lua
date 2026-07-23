@@ -13,7 +13,8 @@ local function loadTealFile(file, ...)
         -- Avoid using logic like `_VERSION <= "Lua 5.3"` in case Lua 5.10 releases.
         strip_attributes = _VERSION == "Lua 5.1" or _VERSION == "Lua 5.2" or _VERSION == "Lua 5.3",
         replace_named_varargs = _VERSION == "Lua 5.1" and "5.1"
-            or (_VERSION == "Lua 5.2" or _VERSION == "Lua 5.3" or _VERSION == "Lua 5.4" and "5.2"),
+            or ((_VERSION == "Lua 5.2" or _VERSION == "Lua 5.3" or _VERSION == "Lua 5.4") and "5.2")
+            or nil,
         rewrite_for_reassignments = not (
                 _VERSION == "Lua 5.1"
                 or _VERSION == "Lua 5.2"

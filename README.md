@@ -11,7 +11,7 @@ A just-in-time [Teal](https://teal-language.org/)-to-Lua transpiler.
 - Rust-style macros are not supported.
 - `macroexp` methods are not supported (except `where`), and unscoped `macroexp`s are replaced with `function`s.
 - New operators like `&`, `|`, `~`, and `//` are not backported to Lua < 5.3.
-- Some compatibility features have a performance impact and thus have to be enabled manually:
+- Some forward-compatibility features have a performance impact and thus have to be enabled manually:
   - `--rewrite-for-reassignments`: allow assignments to `for` control variables (Teal and Lua < 5.3 semantics, workaround for Lua >= 5.4).
 
 `orangetl` is not a replacement for `tl`, since it doesn't perform any validation, so it's unsuitable for development. In addition, the transpiler may throw errors on syntactically invalid code.
