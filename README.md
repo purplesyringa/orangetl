@@ -11,6 +11,8 @@ A just-in-time [Teal](https://teal-language.org/)-to-Lua transpiler.
 - Rust-style macros are not supported.
 - `macroexp` methods are not supported (except `where`), and unscoped `macroexp`s are replaced with `function`s.
 
+`orangetl` is not a replacement for `tl`, since it doesn't perform any validation, so it's unsuitable for development. In addition, the transpiler may throw errors on syntactically invalid code.
+
 ## Install
 
 ```shell
