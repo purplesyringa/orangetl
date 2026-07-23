@@ -11,6 +11,10 @@ gen:option("-o", "Output file."):argname("<filename>"):target("output")
 gen:option("-l", "Parse code as Lua or Teal."):target("language"):choices({ "lua", "teal" })
 gen:flag("--strip-attributes", "Strip attributes (for compatibility with Lua < 5.4).")
 gen:flag("--replace-named-varargs", "Replace named varargs (for compatibility with Lua < 5.5).")
+gen:flag(
+    "--rewrite-for-reassignments",
+    "Rewrite assignments to 'for' control variables (for compatibility with Lua >= 5.4)."
+)
 
 local run = parser:command("run", "Run a Teal script.")
 run:argument("script", "Path to script."):target("script")
@@ -40,6 +44,7 @@ if args.command == "gen" then
     end
     opts.strip_attributes = args.strip_attributes
     opts.replace_named_varargs = args.replace_named_varargs
+    opts.rewrite_for_reassignments = args.rewrite_for_reassignments
 
     local f, err = io.open(args.input, "rb")
     if not f then

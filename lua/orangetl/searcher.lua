@@ -16,6 +16,11 @@ local function loadTealFile(file, ...)
             or _VERSION == "Lua 5.2"
             or _VERSION == "Lua 5.3"
             or _VERSION == "Lua 5.4",
+        rewrite_for_reassignments = not (
+                _VERSION == "Lua 5.1"
+                or _VERSION == "Lua 5.2"
+                or _VERSION == "Lua 5.3"
+            ),
     })
 
     local closure, err = (loadstring or load)(lua_code, "@" .. file, "t") -- luacheck: ignore

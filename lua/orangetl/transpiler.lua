@@ -186,6 +186,23 @@ function Transpiler:parseShallow(until_what)
                 return
             end
             self.stream.cur.is_function_expr = table.remove(nesting_is_function_expr)
+        elseif self.opts.rewrite_for_reassignments and self.stream.tryConsume("for") then
+            local names = {}
+            repeat
+                assert(self.stream.cur.type == "alnum", "expected identifier in 'for'")
+                table.insert(names, self.stream.cur.value)
+                self.stream.nextToken()
+            until not self.stream.tryConsume(",")
+            if self.stream.tryConsume("in") then
+                self:parseExp()
+                assert(self.stream.tryConsume("do"), "invalid 'for'..'in' syntax")
+                table.insert(nesting_is_function_expr, false)
+                names = table.concat(names, ", ")
+                self.chopper.insert(
+                    self.stream.prev.last + 1,
+                    " local " .. names .. " = " .. names .. ";"
+                )
+            end
         elseif
             -- Recognize `field: type =` in tables, ignoring `:` in method calls and labels.
             self.stream.cur.value == ":"
