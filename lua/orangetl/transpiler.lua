@@ -309,7 +309,11 @@ function Transpiler:parseLocalGlobal()
             -- Parse `local record _`, etc. as a type definition if `_` is alnum. This isn't always
             -- correct per the grammar, but it seems to be the same heuristic that Teal uses:
             -- https://github.com/teal-language/tl/issues/1132
-            self:parseTypeDefinition(true)
+            if not is_global then
+                -- We've already removed `global`, now remove `local` as well.
+                self.chopper.cut(self.stream.prev.first, self.stream.cur.first - 1)
+            end
+            self:parseTypeDefinition(is_global)
         end
     elseif self.stream.cur.value == "function" then
         -- Let the shallow parser deal with this.
@@ -373,9 +377,12 @@ function Transpiler:parseLocalGlobal()
     end
 end
 
--- Parse a type definition like `record _ ... end`, replacing it with `_ = { ... };`, where the
--- table literal describes the type. Assumes that the first token is `record`, `interface`, `enum`,
--- or `type`, and the next token is alnum.
+-- Parse a type definition like `record A ... end`, replacing it with `local A` followed by
+-- a statement populating `A` with a description of the type. This is done so that nested types can
+-- refer to `A` correctly according to Teal semantics.
+--
+-- Assumes that the first token is `record`, `interface`, `enum`, or `type`, and the next token is
+-- alnum.
 --
 -- The table description is used for two purposes:
 -- - To allow reexports of nested types to evaluate without triggering `nil` dereference, e.g. in
@@ -384,49 +391,42 @@ end
 --
 -- This differs from Teal, which only generates such definitions for records, but not interfaces or
 -- enums, because we need `__is` to be a runtime method.
-function Transpiler:parseTypeDefinition(allow_empty)
+function Transpiler:parseTypeDefinition(is_global)
     local first = self.stream.cur.first
     local def_type = self.stream.cur.value
-    local name_token = self.stream.next
+    local name = self.stream.next.value
     self.stream.nextToken()
     self.stream.nextToken()
-
-    local typeargs_first = self.stream.cur.first
     self:maybeParseTypeArgs()
-    local typeargs_last = self.stream.prev.last
 
-    if def_type == "type" then
-        if self.stream.tryConsume("=") then
-            -- Remove `type` prefix.
-            self.chopper.cut(first, name_token.first - 1)
-        else
-            -- Removes the entire declaration, including typeargs.
-            assert(allow_empty, "expected = <newtype> after 'type _'")
-            self.chopper.cut(first, self.stream.prev.last)
-            return
-        end
-    else
-        -- Replace `record _` with `_ =` before parsing the rest of the definition.
-        self.chopper.cut(first, name_token.first - 1)
-        self.chopper.insert(name_token.last + 1, " =")
+    if def_type == "type" and not self.stream.tryConsume("=") then
+        -- Forward declaration -- remove it entirely.
+        assert(is_global, "expected = <newtype> after 'type _'")
+        self.chopper.cut(first, self.stream.prev.last)
+        return
     end
 
-    -- Cut out typeargs.
-    self.chopper.cut(typeargs_first, typeargs_last)
+    -- Remove everything up until the type itself.
+    local prefix = nil
+    if not is_global then
+        prefix = "local " .. name .. ";"
+    end
+    self.chopper.cut(first, self.stream.prev.last, prefix)
 
     if def_type == "enum" then
-        self:parseEnumBody()
+        self:parseEnumBody(name)
     elseif def_type == "type" then
         -- newtype
         if anyOf(self.stream.cur.value, "record interface") then
             self.chopper.cut(self.stream.cur.first, self.stream.next.first - 1)
             self.stream.nextToken()
-            self:parseRecordBody()
+            self:parseRecordBody(name)
         elseif self.stream.tryConsume("enum") then
             self.chopper.cut(self.stream.prev.first, self.stream.cur.first - 1)
-            self:parseEnumBody()
+            self:parseEnumBody(name)
         elseif self.stream.tryConsume("require") then
             -- Keep the `require` as-is, since it's already syntactically correct.
+            self.chopper.insert(self.stream.prev.first, name .. " = ")
             assert(self.stream.tryConsume("("), "expected ( after require in newtype")
             self:parseShallow(")")
             while self.stream.tryConsume(".") do
@@ -435,6 +435,7 @@ function Transpiler:parseTypeDefinition(allow_empty)
             end
         else
             local first = self.stream.cur.first
+            self.chopper.insert(first, name .. " = ")
             local condition, is_nominal = self:parseType()
             if not is_nominal then
                 local def = "{ __is = function(self) return "
@@ -444,15 +445,15 @@ function Transpiler:parseTypeDefinition(allow_empty)
             end
         end
     else
-        self:parseRecordBody()
+        self:parseRecordBody(name)
     end
 
     self.chopper.insert(self.stream.prev.last + 1, ";")
 end
 
--- Parses an `enumbody` and replaces it with `{ ... }` describing the type as documented in
--- `parseTypeDefinition`.
-function Transpiler:parseEnumBody()
+-- Parses an `enumbody` and replaces it with `<name> = ` and a table literal describing the type as
+-- documented in `parseTypeDefinition`.
+function Transpiler:parseEnumBody(name)
     local first = self.stream.cur.first
     while self.stream.cur.type == "string" do
         self.stream.nextToken()
@@ -461,14 +462,16 @@ function Transpiler:parseEnumBody()
     self.chopper.cut(
         first,
         self.stream.prev.last,
-        '{ __is = function(self) return type(self) == "string" end }'
+        name .. ' = { __is = function(self) return type(self) == "string" end }'
     )
 end
 
--- Parses a `recordbody` and replaces it with `{ ... }` describing the type as documented in
--- `parseTypeDefinition`.
-function Transpiler:parseRecordBody()
+-- Parses a `recordbody` and replaces it with `do ... <name> = .. end` as documented in
+-- `parseTypeDefinition`. A temporary scope is created to let nested types refer to each other, as
+-- per Teal semantics.
+function Transpiler:parseRecordBody(name)
     local first = self.stream.cur.first
+    self.chopper.insert(first, "do ")
 
     self:maybeParseTypeArgs()
 
@@ -487,20 +490,23 @@ function Transpiler:parseRecordBody()
         end
     end
 
-    -- Cut carefully so that the `where` expression stays intact.
+    self.chopper.cut(first, self.stream.prev.last)
+
     local has_custom_is = false
     if self.stream.tryConsume("where") then
         has_custom_is = true
-        self.chopper.cut(first, self.stream.prev.last, "{ __is = function(self) return")
+        self.chopper.cut(
+            self.stream.prev.first,
+            self.stream.prev.last,
+            "local function __is(self) return"
+        )
         self:parseExp()
-        self.chopper.insert(self.stream.prev.last + 1, " end; ")
-    else
-        self.chopper.cut(first, self.stream.prev.last, "{ ")
-        -- Delay inserting `__is` until we know if this type is `userdata`.
+        self.chopper.insert(self.stream.prev.last + 1, " end ")
     end
-
+    -- If there's no `where`, delay inserting `__is` until we know if this type is `userdata`.
     local is_userdata = false
 
+    local fields = { "__is = __is" }
     while not self.stream.tryConsume("end") do
         -- recordentry
         local first = self.stream.cur.first
@@ -515,7 +521,9 @@ function Transpiler:parseRecordBody()
             anyOf(self.stream.cur.value, "record interface enum type")
             and self.stream.next.type == "alnum"
         then
-            self:parseTypeDefinition()
+            local nested_name = self.stream.next.value
+            table.insert(fields, nested_name .. " = " .. nested_name)
+            self:parseTypeDefinition(false)
             do_cut = false
         else
             if self.stream.next.value ~= ":" then
@@ -538,12 +546,19 @@ function Transpiler:parseRecordBody()
         end
     end
 
-    local trailer = "}"
     if not has_custom_is then
         local expected_type = is_userdata and "userdata" or "table"
-        trailer = '__is = function(self) return type(self) == "' .. expected_type .. '" end; }'
+        self.chopper.insert(
+            self.stream.prev.first,
+            'local function __is(self) return type(self) == "' .. expected_type .. '" end'
+        )
     end
-    self.chopper.cut(self.stream.prev.first, self.stream.prev.last, trailer)
+
+    self.chopper.cut(
+        self.stream.prev.first,
+        self.stream.prev.last,
+        " " .. name .. " = { " .. table.concat(fields, ", ") .. " } end"
+    )
 end
 
 -- Cut `as` casts.
