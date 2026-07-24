@@ -1,12 +1,20 @@
 # orangetl
 
-A just-in-time [Teal](https://teal-language.org/)-to-Lua transpiler.
+A fast, small, just-in-time [Teal](https://teal-language.org/)-to-Lua transpiler.
 
 `orangetl` does not perform any validation or type checking, so it's incredibly fast and can be used to directly `require` Teal code without a build step, similarly to how NodeJS can execute TypeScript.
 
+## Comparison
+
+To check how much time it takes to compile a large Teal project, let's try to compile `tl` itself (the Teal compiler, written in Teal):
+
+- With `tl` of a previous version (bootstrapping): 1.39 s.
+- With `orangetl`: 0.22 s.
+- With the same version of `tl`, JIT-transpiled by `orangetl` (i.e. two compile sessions in one): 1.70 s.
+
 ## Compatibility
 
-`orangetl` is not a full replacement for `tl`. While `orangetl` supports most language-level Teal features, there are a couple exceptions for the trickier details, arising from the single-pass design:
+`orangetl` is not a full replacement for `tl`. While `orangetl` supports most language-level Teal features and is good enough to compile `tl`, there are a couple exceptions for the trickier details, arising from the single-pass design:
 
 - Rust-style macros are not supported.
 - `macroexp` methods are not supported (except `where`), and unscoped `macroexp`s are replaced with `function`s.
