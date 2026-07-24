@@ -83,7 +83,7 @@ if args.command == "gen" then
                 )
                 os.exit(1)
             end
-            output_file = input_without_tl .. ".lua"
+            output_file = input_without_tl:gsub("%.d$", "") .. ".lua"
         end
 
         if args.language == "lua" then
