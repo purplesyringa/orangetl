@@ -488,7 +488,9 @@ function Transpiler:parseRecordBody()
     end
 
     -- Cut carefully so that the `where` expression stays intact.
+    local has_custom_is = false
     if self.stream.tryConsume("where") then
+        has_custom_is = true
         self.chopper.cut(first, self.stream.prev.last, "{ __is = function(self) return")
         self:parseExp()
         self.chopper.insert(self.stream.prev.last + 1, " end; ")
@@ -536,17 +538,12 @@ function Transpiler:parseRecordBody()
         end
     end
 
-    local condition
-    if is_userdata then
-        condition = 'type(self) == "userdata"'
-    else
-        condition = 'type(self) == "table"'
+    local trailer = "}"
+    if not has_custom_is then
+        local expected_type = is_userdata and "userdata" or "table"
+        trailer = '__is = function(self) return type(self) == "' .. expected_type .. '" end; }'
     end
-    self.chopper.cut(
-        self.stream.prev.first,
-        self.stream.prev.last,
-        "__is = function(self) return " .. condition .. " end; }"
-    )
+    self.chopper.cut(self.stream.prev.first, self.stream.prev.last, trailer)
 end
 
 -- Cut `as` casts.
