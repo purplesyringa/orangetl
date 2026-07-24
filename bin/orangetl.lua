@@ -6,7 +6,7 @@ local parser = argparse("orangetl", "A fast Teal-to-Lua transpiler.")
 parser:command_target("command")
 
 local gen = parser:command("gen", "Generate a Lua file from a Teal file.")
-gen:argument("file", "Input file."):target("input")
+gen:argument("file", "Input file."):target("input"):args("+")
 gen:option("-o", "Output file."):argname("<filename>"):target("output")
 gen:option("-l", "Parse code as Lua or Teal."):target("language"):choices({ "lua", "teal" })
 gen:flag("--keep-hashbang", "Preserve hashbang, if present.")
@@ -60,25 +60,7 @@ local function writeFile(path, contents)
 end
 
 if args.command == "gen" then
-    if not args.output then
-        local input_without_tl = args.input:gsub("%.tl$", "")
-        if input_without_tl == args.input then
-            io.stderr:write(
-                "Error: cannot infer output file path when input doesn't end with '.tl'\n"
-            )
-            os.exit(1)
-        end
-        args.output = input_without_tl .. ".lua"
-    end
-
     local opts = {}
-    if args.language == "lua" then
-        opts.lua_quirks = true
-    elseif args.language == "teal" then
-        opts.lua_quirks = false
-    else
-        opts.lua_quirks = args.input:match("%.tl$") == nil
-    end
     opts.keep_hashbang = args.keep_hashbang
     opts.strip_attributes = args.strip_attributes
     opts.replace_named_varargs = args.replace_named_varargs
@@ -86,9 +68,36 @@ if args.command == "gen" then
     opts.rewrite_string_escapes = args.rewrite_string_escapes
     opts.localize_implicit_globals = args.localize_implicit_globals
 
-    local teal_code = readFile(args.input)
-    local transpiled_code = orangetl.transpile(teal_code, opts)
-    writeFile(args.output, transpiled_code)
+    if args.output and #args.input ~= 1 then
+        io.stderr:write("Error: cannot override output file path with multiple input files\n")
+        os.exit(1)
+    end
+
+    for _, input_file in ipairs(args.input) do
+        local output_file = args.output
+        if not output_file then
+            local input_without_tl = input_file:gsub("%.tl$", "")
+            if input_without_tl == input_file then
+                io.stderr:write(
+                    "Error: cannot infer output file path when input doesn't end with '.tl'\n"
+                )
+                os.exit(1)
+            end
+            output_file = input_without_tl .. ".lua"
+        end
+
+        if args.language == "lua" then
+            opts.lua_quirks = true
+        elseif args.language == "teal" then
+            opts.lua_quirks = false
+        else
+            opts.lua_quirks = input_file:match("%.tl$") == nil
+        end
+
+        local teal_code = readFile(input_file)
+        local transpiled_code = orangetl.transpile(teal_code, opts)
+        writeFile(output_file, transpiled_code)
+    end
 elseif args.command == "gen-dtl" then
     if not args.output then
         io.stderr:write("Error: gen-dtl requires an explicit output path\n")
