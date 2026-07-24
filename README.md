@@ -6,7 +6,7 @@ A fast, small, just-in-time [Teal](https://teal-language.org/)-to-Lua transpiler
 
 ## Comparison
 
-To check how much time it takes to compile a large Teal project, let's try to compile `tl` itself (the Teal compiler, written in Teal):
+Here's how much time it takes to compile the Teal compiler (written in Teal itself):
 
 - With `tl` of a previous version (bootstrapping): 1.39 s.
 - With `orangetl`: 0.22 s.
@@ -16,6 +16,30 @@ Size comparison (bundled into a single minified Lua file, excluding dependencies
 
 - `tl`: 421 kB.
 - `orangetl`: 26 kB.
+
+## Usage
+
+```shell
+# Install from LuaRocks.
+luarocks install orangetl
+
+# Run a Teal file, converting it on the fly.
+orangetl run script.tl
+
+# Transpile a Teal file ahead of time.
+orangetl gen src/script.tl -o build/script.lua
+
+# Transpile a Lua file with Teal annotations (annotated .lua files have subtly different semantics
+# from .tl files, mirrors tl behavior).
+orangetl gen src/script.lua -o build/script.lua
+
+# Merge a .d.tl file with a Lua module. The generated script contains both the Lua code and runtime
+# representations of the types.
+orangetl gen-dtl src/script.d.tl src/script.lua -o build/script.lua
+
+# Transpile a .d.tl file without an associated Lua module (e.g. used exclusively in `type = ...`).
+orangetl gen src/script.d.tl -o build/script.lua
+```
 
 ## Compatibility
 
@@ -31,36 +55,7 @@ Size comparison (bundled into a single minified Lua file, excluding dependencies
   - New operators like `&`, `|`, `~`, and `//` are not backported to Lua < 5.3, since parsing them is slow.
 - `orangetl` doesn't perform any validation, so it's unsuitable for development. In addition, the transpiler may throw errors on syntactically invalid code.
 
-## Install
-
-```shell
-$ luarocks install orangetl
-```
-
-## Usage
-
-### CLI
-
-```shell
-# Run a Teal file, converting it on the fly.
-orangetl run script.tl
-
-# Transpile a Teal file.
-orangetl gen src/script.tl -o build/script.lua
-
-# Transpile a Lua file with Teal annotations (annotated .lua files have subtly different semantics
-# from .tl files, mirrors tl behavior).
-orangetl gen src/script.lua -o build/script.lua
-
-# Merge a .d.tl file with a Lua module. The generated script contains both the Lua code and runtime
-# representations of the types.
-orangetl gen-dtl src/script.d.tl src/script.lua -o build/script.lua
-
-# Transpile a .d.tl file without an associated Lua module (e.g. used exclusively in `type = ...`).
-orangetl gen src/script.d.tl -o build/script.lua
-```
-
-### Programmatic
+## Library usage
 
 Install a searcher so that `require` works on Teal files, reusing `package.path`:
 
