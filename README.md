@@ -12,10 +12,10 @@ A just-in-time [Teal](https://teal-language.org/)-to-Lua transpiler.
 - `macroexp` methods are not supported (except `where`), and unscoped `macroexp`s are replaced with `function`s.
 - Some aspects of the type system are implemented in runtime:
   - The `is` operator requires `where` definitions to be compiled to an `__is` method, so type-only files still need to be transpiled.
-  - `.d.tl` files are not supported with JIT transpilation, since "two files per module" doesn't integreate well with Lua design. Ahead-of-time transpilation supports `.d.tl`, but not for external modules.
-- New operators like `&`, `|`, `~`, and `//` are not backported to Lua < 5.3, since they are slow to parse.
-- Some forward-compatibility features have a performance impact and thus have to be enabled manually:
-  - `--rewrite-for-reassignments`: allow assignments to `for` control variables (Teal and Lua < 5.3 semantics, workaround for Lua >= 5.4).
+  - `.d.tl` files are not supported with JIT transpilation, since "two files per module" doesn't mesh well with how `require` works. Ahead-of-time transpilation supports `.d.tl`, but not for external modules, for similar reasons.
+- Some compatibility features don't work as well:
+  - Assignments to `for` control variables don't work by default on Lua >= 5.4 and have to be enabled with `--rewrite-for-reassignments`. This may slightly slow down all `for` loops, so it's off by default.
+  - New operators like `&`, `|`, `~`, and `//` are not backported to Lua < 5.3, since parsing them is slow.
 - `orangetl` doesn't perform any validation, so it's unsuitable for development. In addition, the transpiler may throw errors on syntactically invalid code.
 
 ## Install
