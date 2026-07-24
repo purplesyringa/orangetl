@@ -1,6 +1,6 @@
 local argparse = require("argparse")
 local searcher = require("orangetl.searcher")
-local transpiler = require("orangetl.transpiler")
+local orangetl = require("orangetl")
 
 local parser = argparse("orangetl", "A fast Teal-to-Lua transpiler.")
 parser:command_target("command")
@@ -26,11 +26,38 @@ gen:flag(
     "Prepend 'local <name> = <name>' for globals accessed by the generated code."
 )
 
+local gen_dtl = parser:command("gen-dtl", "Generate a Lua file from a .d.tl file.")
+gen_dtl:argument("dtl-file", "Input .d.tl file."):target("dtl_input")
+gen_dtl:argument("lua-file", "Matching .lua file."):target("lua_input")
+gen_dtl:option("-o", "Output file."):argname("<filename>"):target("output")
+
 local run = parser:command("run", "Run a Teal script.")
 run:argument("script", "Path to script."):target("script")
 run:argument("args", "Arguments passed to the script."):target("args"):args("*")
 
 local args = parser:parse()
+
+local function readFile(path)
+    local f, err = io.open(path, "rb")
+    if not f then
+        io.stderr:write("Error: " .. err .. "\n")
+        os.exit(1)
+    end
+    local code = f:read("*a")
+    assert(code, "cannot read " .. path)
+    f:close()
+    return code
+end
+
+local function writeFile(path, contents)
+    local f, err = io.open(path, "wb")
+    if not f then
+        io.stderr:write("Error: " .. err .. "\n")
+        os.exit(1)
+    end
+    f:write(contents)
+    f:close()
+end
 
 if args.command == "gen" then
     if not args.output then
@@ -59,23 +86,19 @@ if args.command == "gen" then
     opts.rewrite_string_escapes = args.rewrite_string_escapes
     opts.localize_implicit_globals = args.localize_implicit_globals
 
-    local f, err = io.open(args.input, "rb")
-    if not f then
-        io.stderr:write("Error: " .. err .. "\n")
+    local teal_code = readFile(args.input)
+    local transpiled_code = orangetl.transpile(teal_code, opts)
+    writeFile(args.output, transpiled_code)
+elseif args.command == "gen-dtl" then
+    if not args.output then
+        io.stderr:write("Error: gen-dtl requires an explicit output path\n")
         os.exit(1)
     end
-    local teal_code = f:read("*a")
-    f:close()
 
-    local lua_code = transpiler.transpile(teal_code, opts)
-
-    f, err = io.open(args.output, "wb")
-    if not f then
-        io.stderr:write("Error: " .. err .. "\n")
-        os.exit(1)
-    end
-    f:write(lua_code)
-    f:close()
+    local dtl_code = readFile(args.dtl_input)
+    local lua_code = readFile(args.lua_input)
+    local transpiled_code = orangetl.transpileDef(dtl_code, lua_code)
+    writeFile(args.output, transpiled_code)
 elseif args.command == "run" then
     -- luacheck: push ignore
     table.insert(package.searchers or package.loaders, 2, searcher.searcher)

@@ -6,15 +6,17 @@ A just-in-time [Teal](https://teal-language.org/)-to-Lua transpiler.
 
 ## Compatibility
 
-`orangetl` supports all Teal features, with a few exceptions arising from the single-pass design:
+`orangetl` is not a full replacement for `tl`. While `orangetl` supports most language-level Teal features, there are a couple exceptions for the trickier details, arising from the single-pass design:
 
 - Rust-style macros are not supported.
 - `macroexp` methods are not supported (except `where`), and unscoped `macroexp`s are replaced with `function`s.
-- New operators like `&`, `|`, `~`, and `//` are not backported to Lua < 5.3.
+- Some aspects of the type system are implemented in runtime:
+  - The `is` operator requires `where` definitions to be compiled to an `__is` method, so type-only files still need to be transpiled.
+  - `.d.tl` files are not supported with JIT transpilation, since "two files per module" doesn't integreate well with Lua design. Ahead-of-time transpilation supports `.d.tl`, but not for external modules.
+- New operators like `&`, `|`, `~`, and `//` are not backported to Lua < 5.3, since they are slow to parse.
 - Some forward-compatibility features have a performance impact and thus have to be enabled manually:
   - `--rewrite-for-reassignments`: allow assignments to `for` control variables (Teal and Lua < 5.3 semantics, workaround for Lua >= 5.4).
-
-`orangetl` is not a replacement for `tl`, since it doesn't perform any validation, so it's unsuitable for development. In addition, the transpiler may throw errors on syntactically invalid code.
+- `orangetl` doesn't perform any validation, so it's unsuitable for development. In addition, the transpiler may throw errors on syntactically invalid code.
 
 ## Install
 
@@ -24,35 +26,45 @@ $ luarocks install orangetl
 
 ## Usage
 
-Transpile a file via CLI:
+### CLI
 
 ```shell
-$ orangetl gen script.tl -o script.lua
+# Run a Teal file, converting it on the fly.
+orangetl run script.tl
+
+# Transpile a Teal file.
+orangetl gen src/script.tl -o build/script.lua
+
+# Transpile a Lua file with Teal annotations (annotated .lua files have subtly different semantics
+# from .tl files, mirrors tl behavior).
+orangetl gen src/script.lua -o build/script.lua
+
+# Merge a .d.tl file with a Lua module. The generated script contains both the Lua code and runtime
+# representations of the types.
+orangetl gen-dtl src/script.d.tl src/script.lua -o build/script.lua
+
+# Transpile a .d.tl file without an associated Lua module (e.g. used exclusively in `type = ...`).
+orangetl gen src/script.d.tl -o build/script.lua
 ```
 
----
+### Programmatic
 
-Run a Teal file:
-
-```shell
-$ orangetl run script.tl
-```
-
----
-
-Programmatically register a searcher for `.tl` files (reuses `package.path`, replacing `.lua` with `.tl`), so that `require` works on `.tl` files:
+Install a searcher so that `require` works on Teal files, reusing `package.path`:
 
 ```lua
-table.insert(package.searchers or package.loaders, 2, require "orangetl".searcher)
+table.insert(package.searchers or package.loaders, 2, require("orangetl").searcher)
 ```
 
----
-
-Transpile a file via API:
+Transpile a Teal or annotated Lua file, or a pure `.d.tl` file:
 
 ```lua
-local orangetl = require "orangetl"
-local lua_code = orangetl.transpile(teal_code[, opts])
+local generated_code = require("orangetl").transpile(source_code[, opts])
+```
+
+Transpile a `.d.tl` file, embedding the corresponding Lua source:
+
+```lua
+local generated_code = require("orangetl").transpileDef(dtl_source_code, lua_source_code)
 ```
 
 The supported options are:
