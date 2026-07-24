@@ -29,7 +29,7 @@ local function transpile(code, opts)
     transpiler:parseShallow("eof")
     code = transpiler.chopper.finish()
 
-    if opts.localize_implicit_globals then
+    if transpiler.opts.localize_implicit_globals then
         local accessed_globals = {}
         for name, _ in pairs(transpiler.accessed_globals) do
             table.insert(accessed_globals, name)
