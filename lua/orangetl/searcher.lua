@@ -31,20 +31,27 @@ local function loadTealFile(file, ...)
     return closure(...)
 end
 
+-- An odd implementations, but mirrors Lua.
+local function isReadable(path)
+    local f = io.open(path, "r")
+    if f then
+        f:close()
+        return true
+    end
+    return false
+end
+
 local function searcher(name)
     -- Reimplement `package.searchpath` for compatibility with Lua 5.1. Roughly follows
     -- https://github.com/keplerproject/lua-compat-5.2.
     local file_name = name:gsub("%.", package.config:sub(1, 1))
     local err = ""
     for pattern in package.path:gmatch("[^;]+") do
-        local tl_pattern = pattern:gsub("%.lua$", ".tl")
-        if tl_pattern ~= pattern then
-            local file = tl_pattern:gsub("%?", file_name)
-            local f = io.open(file, "r")
-            if f then
-                f:close()
-                -- Construct a closure for `file` instead of returning a user value because Lua 5.1
-                -- doesn't support that.
+        if pattern:match("%.lua$") then
+            local file = pattern:gsub("%.lua$", ".tl"):gsub("%?", file_name)
+            if isReadable(file) then
+                -- Construct a closure for `file` instead of passing a user value via the second
+                -- return value, because Lua 5.1 doesn't support that.
                 return function(name)
                     local ok, value = pcall(loadTealFile, file)
                     if ok then
