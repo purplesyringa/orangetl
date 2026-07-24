@@ -1,0 +1,38 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@master
+    - name: Install Lua
+      uses: leafo/gh-actions-lua@v13
+      with:
+        luaVersion: 5.5.0
+    - name: Install luarocks
+      uses: leafo/gh-actions-luarocks@v6
+    - name: Install bundling tools
+      run: npm ci
+    - name: Bundle
+      run: make
+    - name: Publish to LuaRocks
+      run: |
+        sed \
+          -e 's/tag = nil/tag = "${{ github.ref_name }}"/' \
+          -e 's/version = "dev-1"/version = "${{ github.ref_name }}-1"/' \
+          orangetl-dev-1.rockspec \
+          >orangetl-${{ github.ref_name }}-1.rockspec
+        luarocks upload --temp-key ${{ secrets.LUAROCKS_API_KEY }} orangetl-${{ github.ref_name }}-1.rockspec
+    - name: Publish to GitHub
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: orangetl.min.lua

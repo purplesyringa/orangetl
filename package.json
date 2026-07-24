@@ -1,0 +1,8 @@
+{
+  "name": "orangetl",
+  "version": "1.0.0",
+  "dependencies": {
+    "luabundler": "^1.2.3",
+    "luamin": "^1.0.4"
+  }
+}

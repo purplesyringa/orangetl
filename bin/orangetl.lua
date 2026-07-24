@@ -1,4 +1,4 @@
-local argparse = require("argparse")
+local argparse = _G.require("argparse") -- avoid bundling argparse
 local searcher = require("orangetl.searcher")
 local orangetl = require("orangetl")
 

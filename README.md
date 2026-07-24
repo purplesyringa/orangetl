@@ -12,6 +12,11 @@ To check how much time it takes to compile a large Teal project, let's try to co
 - With `orangetl`: 0.22 s.
 - With the same version of `tl`, JIT-transpiled by `orangetl` (i.e. two compile sessions in one): 1.70 s.
 
+Size comparison (bundled into a single minified Lua file, excluding dependencies):
+
+- `tl`: 421 kB.
+- `orangetl`: 26 kB.
+
 ## Compatibility
 
 `orangetl` is not a full replacement for `tl`. While `orangetl` supports most language-level Teal features and is good enough to compile `tl`, there are a couple exceptions for the trickier details, arising from the single-pass design:
