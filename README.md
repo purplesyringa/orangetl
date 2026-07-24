@@ -14,8 +14,8 @@ Here's how much time it takes to compile the Teal compiler (written in Teal itse
 
 Size comparison (bundled into a single minified Lua file, excluding dependencies):
 
-- `tl`: 421 kB.
-- `orangetl`: 26 kB.
+- `tl`: 421 kB (100 kB gzipped).
+- `orangetl`: 26 kB (6.5 kB gzipped).
 
 ## Usage
 
