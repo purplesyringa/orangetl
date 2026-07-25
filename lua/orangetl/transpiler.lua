@@ -214,16 +214,20 @@ function Transpiler:parseShallow(until_what)
                 table.insert(names, self.stream.cur.value)
                 self.stream.nextToken()
             until not self.stream.tryConsume(",")
-            if self.stream.tryConsume("in") then
+            assert(
+                self.stream.tryConsume("in") or self.stream.tryConsume("="),
+                "invalid 'for' syntax"
+            )
+            repeat
                 self:parseExp()
-                assert(self.stream.tryConsume("do"), "invalid 'for'..'in' syntax")
-                table.insert(nesting_is_function_expr, false)
-                names = table.concat(names, ", ")
-                self.chopper.insert(
-                    self.stream.prev.last + 1,
-                    " local " .. names .. " = " .. names .. ";"
-                )
-            end
+            until not self.stream.tryConsume(",")
+            assert(self.stream.tryConsume("do"), "invalid 'for' syntax")
+            table.insert(nesting_is_function_expr, false)
+            names = table.concat(names, ", ")
+            self.chopper.insert(
+                self.stream.prev.last + 1,
+                " local " .. names .. " = " .. names .. ";"
+            )
         elseif
             -- Recognize `field: type =` in tables, ignoring `:` in method calls and labels.
             self.stream.cur.value == ":"
